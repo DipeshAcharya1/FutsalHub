@@ -1,0 +1,61 @@
+.home-header {
+  width: 100%;
+  background: linear-gradient(90deg, #0f172a, #111827);
+  padding: 12px 20px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.4px;
+}
+
+.home-left { display:flex; align-items:center; gap:12px; }
+
+/* nav container */
+.home-nav {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.nav-toggle { display: none; background: transparent; border: none; color: #fff; }
+.nav-toggle .hamburger { width:20px; height:2px; background:#fff; display:block; position:relative }
+.nav-toggle .hamburger::after, .nav-toggle .hamburger::before { content:''; position:absolute; left:0; width:20px; height:2px; background:#fff }
+.nav-toggle .hamburger::before { top:-6px }
+.nav-toggle .hamburger::after { top:6px }
+
+/* links */
+.nav-link {
+  color: #e6eef8;
+  text-decoration: none;
+  font-size: 15px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.18s, color 0.18s;
+}
+
+.nav-link:hover {
+  background: rgba(255,255,255,0.04);
+  color: #fff;
+}
+
+.login-btn {
+  background: linear-gradient(90deg,#7c3aed,#4f46e5);
+  color: #fff;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 12px;
+}
+
+@media (max-width: 800px) {
+  .nav-toggle { display: block }
+  .home-nav { position: absolute; top:64px; right:12px; background: rgba(7,10,20,0.95); flex-direction: column; padding:12px; border-radius:8px; display:none }
+  .home-nav.open { display:flex }
+  .home-header { padding:12px }
+}

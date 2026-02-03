@@ -1,0 +1,186 @@
+.admin-dashboard {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-main {
+  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  box-sizing: border-box;
+}
+
+.admin-head h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.admin-head p {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-cards {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.admin-card {
+  background: linear-gradient(180deg, rgba(15,23,42,0.9), rgba(7,11,20,0.85));
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.03);
+  box-shadow: 0 12px 36px rgba(2,6,23,0.6);
+}
+
+.admin-card h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.admin-card button {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary);
+  color: #f9fafb;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.admin-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 20px 0 8px;
+  flex-wrap: wrap;
+}
+
+.admin-nav button {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.admin-nav button.active {
+  background: linear-gradient(90deg,var(--primary),var(--accent));
+  color: #fff;
+  border-color: transparent;
+}
+
+.link-button {
+  margin-left: auto;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--primary);
+  text-decoration: none;
+  border-radius: 8px;
+  border: 1px dashed rgba(124,58,237,0.12);
+}
+
+.admin-table-section {
+  margin-top: 18px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  background: transparent;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 12px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.admin-table th {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-table tbody tr:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.admin-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 12px 0;
+}
+
+.admin-loading,
+.admin-error {
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+/* Super-admin / form styles */
+.admin-form { max-width: 720px; background: linear-gradient(180deg, rgba(10,14,20,0.6), rgba(4,8,12,0.6)); padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); }
+.admin-form .field { margin-bottom: 12px; }
+.admin-form label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px }
+.admin-form input, .admin-form select { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color: #e6eef8; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
+.admin-form input::placeholder { color: rgba(230,238,248,0.45); }
+.admin-form .form-row { display:flex; gap:12px; }
+.admin-form .form-row .field { flex:1 }
+.admin-form .btn-row { display:flex; justify-content:flex-end; margin-top:6px }
+.admin-form .field-error { color:#ffb4b4; font-size:12px; margin-top:6px }
+
+.primary-btn { padding:10px 14px; border-radius:10px; border:none; background: linear-gradient(90deg,var(--primary),var(--accent)); color:#fff; cursor:pointer }
+
+/* Modal styles used by admin page */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2,6,23,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 60;
+}
+.modal {
+  background: linear-gradient(180deg,#0b1220,#06111a);
+  border-radius: 12px;
+  padding: 18px;
+  width: 100%;
+  max-width: 760px;
+  color: #e6eef8;
+}
+.modal.large { max-width: 1100px; display: grid; grid-template-columns: 1fr 360px; gap: 16px }
+.modal label { display: block; margin: 8px 0; font-size: 13px }
+.modal input, .modal select { width: 100%; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.03); color: #e6eef8 }
+.modal-actions { display:flex; gap:8px; justify-content: flex-end; margin-top: 12px }
+
+/* Timeslot form adjustments */
+.timeslot-list { overflow:auto }
+.timeslot-form { background: rgba(0,0,0,0.04); padding:12px; border-radius:8px }
+
+@media (max-width: 900px) {
+  .modal.large { grid-template-columns: 1fr; }
+  .admin-table { min-width: 640px }
+}
+
+@media (max-width: 520px) {
+  .admin-main { padding: 14px }
+  .admin-head h1 { font-size: 20px }
+  .admin-table th, .admin-table td { padding: 8px }
+  .admin-cards { gap: 12px }
+}
