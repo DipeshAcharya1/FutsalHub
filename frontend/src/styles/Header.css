@@ -1,61 +1,245 @@
+/* =============================================
+   HEADER CSS - ADMIN THEME - FIXED BUTTONS
+   ============================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Header Container */
 .home-header {
   width: 100%;
-  background: linear-gradient(90deg, #0f172a, #111827);
-  padding: 12px 20px;
+  background: #ffffff;
+  padding: 12px 30px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
+/* Logo */
 .home-logo {
-  font-size: 20px;
-  font-weight: 800;
-  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  color: #2c3e50;
   letter-spacing: 0.4px;
+  text-decoration: none;
 }
 
-.home-left { display:flex; align-items:center; gap:12px; }
+.home-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-/* nav container */
+/* Navigation */
 .home-nav {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
 }
 
-.nav-toggle { display: none; background: transparent; border: none; color: #fff; }
-.nav-toggle .hamburger { width:20px; height:2px; background:#fff; display:block; position:relative }
-.nav-toggle .hamburger::after, .nav-toggle .hamburger::before { content:''; position:absolute; left:0; width:20px; height:2px; background:#fff }
-.nav-toggle .hamburger::before { top:-6px }
-.nav-toggle .hamburger::after { top:6px }
-
-/* links */
+/* Nav Links */
 .nav-link {
-  color: #e6eef8;
+  color: #2c3e50;
   text-decoration: none;
   font-size: 15px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: background 0.18s, color 0.18s;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  position: relative;
+  white-space: nowrap;
 }
 
 .nav-link:hover {
-  background: rgba(255,255,255,0.04);
-  color: #fff;
+  background: #e8f0fe;
+  color: #2980b9;
 }
 
+/* Active link indicator */
+.nav-link.active {
+  color: #2980b9;
+  font-weight: 600;
+}
+
+.nav-link.active::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  bottom: 4px;
+  width: calc(100% - 32px);
+  height: 2px;
+  background: #2980b9;
+}
+
+/* LOGIN BUTTON - FIXED VISIBILITY */
 .login-btn {
-  background: linear-gradient(90deg,#7c3aed,#4f46e5);
-  color: #fff;
-  font-weight: 700;
-  padding: 8px 14px;
-  border-radius: 12px;
+  background: #3498db !important;
+  color: white !important;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 6px;
+  margin-left: 8px;
+  border: none;
+  box-shadow: 0 2px 5px rgba(52, 152, 219, 0.3);
 }
 
+.login-btn:hover {
+  background: #2980b9 !important;
+  color: white !important;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+}
+
+/* LOGOUT BUTTON - FIXED VISIBILITY */
+.logout-btn {
+  background: #e74c3c !important;
+  color: white !important;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 5px rgba(231, 76, 60, 0.3);
+}
+
+.logout-btn:hover {
+  background: #c0392b !important;
+  color: white !important;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+}
+
+/* Mobile Toggle Button */
+.nav-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+}
+
+.hamburger {
+  width: 24px;
+  height: 2px;
+  background: #2c3e50;
+  display: block;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.hamburger::after,
+.hamburger::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 24px;
+  height: 2px;
+  background: #2c3e50;
+  transition: all 0.3s ease;
+}
+
+.hamburger::before {
+  top: -8px;
+}
+
+.hamburger::after {
+  top: 8px;
+}
+
+/* Hamburger Animation when open */
+.home-nav.open + .nav-toggle .hamburger {
+  background: transparent;
+}
+
+.home-nav.open + .nav-toggle .hamburger::before {
+  transform: rotate(45deg);
+  top: 0;
+}
+
+.home-nav.open + .nav-toggle .hamburger::after {
+  transform: rotate(-45deg);
+  top: 0;
+}
+
+/* =============================================
+   RESPONSIVE DESIGN
+   ============================================= */
 @media (max-width: 800px) {
-  .nav-toggle { display: block }
-  .home-nav { position: absolute; top:64px; right:12px; background: rgba(7,10,20,0.95); flex-direction: column; padding:12px; border-radius:8px; display:none }
-  .home-nav.open { display:flex }
-  .home-header { padding:12px }
+  .home-header {
+    padding: 12px 20px;
+  }
+
+  .nav-toggle {
+    display: block;
+    z-index: 1001;
+  }
+
+  .home-nav {
+    position: absolute;
+    top: 70px;
+    right: 20px;
+    width: min(250px, calc(100vw - 40px));
+    background: #ffffff;
+    flex-direction: column;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    gap: 10px;
+    display: none;
+    z-index: 1000;
+    border: 1px solid #e0e0e0;
+  }
+
+  .home-nav.open {
+    display: flex;
+  }
+
+  .nav-link {
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px;
+  }
+
+  .nav-link::after {
+    left: 16px;
+    bottom: 8px;
+    width: calc(100% - 32px);
+  }
+
+  /* Mobile buttons - full width */
+  .login-btn,
+  .logout-btn {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 5px;
+    text-align: center;
+    padding: 12px 20px !important;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+  .home-header {
+    padding: 10px 15px;
+  }
+
+  .home-logo {
+    font-size: 18px;
+  }
+
+  .home-nav {
+    top: 60px;
+    right: 15px;
+    width: calc(100vw - 30px);
+    padding: 15px;
+  }
 }

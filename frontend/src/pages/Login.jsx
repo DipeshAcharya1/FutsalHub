@@ -43,7 +43,7 @@ const Login = () => {
     if (user.role === "super-admin") {
       navigate("/super-admin");
     } else if (user.role === "admin") {
-      navigate("/admin");
+      navigate(`/admin/${user.futsal_id}`); // Assuming admin has futsal_id
     } else {
       navigate("/home");
     }

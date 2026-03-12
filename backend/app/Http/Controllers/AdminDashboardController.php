@@ -7,362 +7,682 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class AdminDashboardController extends Controller
 {
-    /**
-     * Ensure the authenticated user can manage the given futsal.
-     * If the `futsals` table exists this will abort with 404/403 when appropriate.
-     */
-    private function authorizeFutsal(Request $request, $futsalId)
+    // =============================================
+    // FUTSAL INFO
+    // =============================================
+    public function futsal($futsal): JsonResponse
     {
-        if (Schema::hasTable('futsals')) {
-            $f = DB::table('futsals')->where('id', $futsalId)->first();
-            if (! $f) {
-                abort(404, 'Futsal not found');
+        try {
+            Log::info('Fetching futsal with ID: ' . $futsal);
+            
+            $data = DB::table('futsals')
+                ->where('id', $futsal)
+                ->first();
+            
+            if (!$data) {
+                Log::error('Futsal not found with ID: ' . $futsal);
+                return response()->json(['error' => 'Futsal not found'], 404);
             }
-            if (property_exists($f, 'manager_id') && $request->user() && $f->manager_id != $request->user()->id) {
-                abort(403, 'Forbidden');
+            
+            // Check if futsal is active (default to true if column doesn't exist)
+            $isActive = isset($data->active) ? $data->active : true;
+            
+            // Ensure image URL is full URL
+            if ($data->image && !str_starts_with($data->image, 'http')) {
+                $data->image = asset($data->image);
             }
+            
+            // Add status information
+            $data->is_active = $isActive;
+            $data->access_level = $isActive ? 'full' : 'read_only';
+            
+            Log::info('Futsal data found. Active: ' . ($isActive ? 'Yes' : 'No'));
+            return response()->json($data);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching futsal: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
         }
     }
-    /**
-     * Return lists for futsals, bookings and users.
-     */
-    public function courts(Request $request, $futsalId): JsonResponse
+
+    // =============================================
+    // UPDATE FUTSAL INFO 
+    // =============================================
+    public function updateFutsal(Request $request, $futsal): JsonResponse
     {
-        $this->authorizeFutsal($request, $futsalId);
-
-        if (! Schema::hasTable('courts')) {
-            return response()->json([], 200);
-        }
-
-        $courts = DB::table('courts')->where('futsal_id', $futsalId)->orderBy('id', 'asc')->get();
-        return response()->json($courts);
-    }
-
-    public function bookings(Request $request, $futsalId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('bookings')) {
-            return response()->json([], 200);
-        }
-        $bookings = DB::table('bookings')->where('futsal_id', $futsalId)->orderBy('id', 'desc')->get();
-        return response()->json($bookings);
-    }
-
-    public function users(Request $request, $futsalId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('users') || ! Schema::hasTable('bookings')) {
-            return response()->json([], 200);
-        }
-
-        // return users who have bookings for this futsal
-        $users = DB::table('users')
-            ->join('bookings', 'users.id', '=', 'bookings.user_id')
-            ->where('bookings.futsal_id', $futsalId)
-            ->select('users.id', 'users.name', 'users.email', 'users.phone')
-            ->distinct()
-            ->orderBy('users.id', 'desc')
-            ->get();
-        return response()->json($users);
-    }
-
-    public function storeCourt(Request $request, $futsalId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-
-        if (! Schema::hasTable('courts')) {
-            return response()->json(['message' => 'Futsals table not found'], 500);
-        }
-
-        $data = $request->only(['name', 'location', 'price']);
-        $validator = Validator::make($data, [
-            'name' => 'required|string|max:255',
-            'location' => 'nullable|string|max:255',
-            'price' => 'nullable|numeric',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $id = DB::table('courts')->insertGetId(array_merge($data, ['futsal_id' => $futsalId, 'active' => true, 'created_at' => now(), 'updated_at' => now()]));
-        $court = DB::table('courts')->where('id', $id)->first();
-        return response()->json($court, 201);
-    }
-
-    public function updateCourt(Request $request, $futsalId, $id): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('courts')) {
-            return response()->json(['message' => 'Futsals table not found'], 500);
-        }
-
-        $data = $request->only(['name', 'location', 'price']);
-        DB::table('courts')->where('id', $id)->where('futsal_id', $futsalId)->update(array_merge($data, ['updated_at' => now()]));
-        $court = DB::table('courts')->where('id', $id)->first();
-        return response()->json($court);
-    }
-
-    public function toggleActive(Request $request, $futsalId, $id): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('courts')) {
-            return response()->json(['message' => 'Futsals table not found'], 500);
-        }
-        $court = DB::table('courts')->where('id', $id)->where('futsal_id', $futsalId)->first();
-        if (! $court) {
-            return response()->json(['message' => 'Futsal not found'], 404);
-        }
-        $active = property_exists($court, 'active') ? ! $court->active : false;
-        DB::table('courts')->where('id', $id)->update(['active' => $active, 'updated_at' => now()]);
-        return response()->json(['id' => $id, 'active' => $active]);
-    }
-
-    public function timeslots(Request $request, $futsalId, $courtId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('timeslots')) {
-            return response()->json([], 200);
-        }
-        // ensure court belongs to futsal
-        if (Schema::hasTable('courts')) {
-            $court = DB::table('courts')->where('id', $courtId)->where('futsal_id', $futsalId)->first();
-            if (! $court) {
-                return response()->json([], 200);
+        try {
+            // First check if futsal is active
+            $currentFutsal = DB::table('futsals')->where('id', $futsal)->first();
+            
+            if (!$currentFutsal) {
+                return response()->json(['error' => 'Futsal not found'], 404);
             }
-        }
-        $slots = DB::table('timeslots')->where('court_id', $courtId)->orderBy('start')->get();
-        return response()->json($slots);
-    }
-
-    public function storeTimeslot(Request $request, $futsalId, $courtId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('timeslots')) {
-            return response()->json(['message' => 'Timeslots table not found'], 500);
-        }
-        $data = $request->only(['start', 'end', 'price']);
-        $validator = Validator::make($data, [
-            'start' => 'required|string',
-            'end' => 'required|string',
-            'price' => 'nullable|numeric',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-        $id = DB::table('timeslots')->insertGetId(array_merge($data, ['court_id' => $courtId, 'created_at' => now(), 'updated_at' => now()]));
-        $slot = DB::table('timeslots')->where('id', $id)->first();
-        return response()->json($slot, 201);
-    }
-
-    public function updateTimeslot(Request $request, $futsalId, $courtId, $tid): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('timeslots')) {
-            return response()->json(['message' => 'Timeslots table not found'], 500);
-        }
-        $data = $request->only(['start', 'end', 'price']);
-        DB::table('timeslots')->where('id', $tid)->where('court_id', $courtId)->update(array_merge($data, ['updated_at' => now()]));
-        $slot = DB::table('timeslots')->where('id', $tid)->first();
-        return response()->json($slot);
-    }
-
-    public function deleteTimeslot(Request $request, $futsalId, $courtId, $tid): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('timeslots')) {
-            return response()->json(['message' => 'Timeslots table not found'], 500);
-        }
-        DB::table('timeslots')->where('id', $tid)->where('court_id', $courtId)->delete();
-        return response()->json(['deleted' => true]);
-    }
-
-    public function reports(Request $request, $futsalId): JsonResponse
-    {
-        $this->authorizeFutsal($request, $futsalId);
-        if (! Schema::hasTable('bookings')) {
-            return response()->json(['data' => []]);
-        }
-
-        $period = $request->query('period', 'daily');
-        $date = $request->query('date', null);
-        $query = DB::table('bookings')->where('futsal_id', $futsalId);
-
-        if ($date) {
-            try {
-                $d = Carbon::parse($date)->startOfDay();
-            } catch (\Exception $e) {
-                return response()->json(['message' => 'Invalid date'], 422);
+            
+            // Check if futsal is active - prevent updates if deactivated
+            $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot update a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
             }
-        }
+            
+            $validator = Validator::make($request->all(), [
+                'futsal_name' => 'required|string|max:255',
+                'location' => 'required|string',
+                'contact_number' => 'required|string',
+                'description' => 'nullable|string',
+            ]);
 
-        $data = [];
-        if ($period === 'daily') {
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $updateData = [
+                'futsal_name' => $request->futsal_name,
+                'location' => $request->location,
+                'contact_number' => $request->contact_number,
+                'description' => $request->description,
+                'updated_at' => now(),
+            ];
+
+            DB::table('futsals')
+                ->where('id', $futsal)
+                ->update($updateData);
+
+            $updatedFutsal = DB::table('futsals')
+                ->where('id', $futsal)
+                ->first();
+
+            // Ensure image URL is full URL
+            if ($updatedFutsal->image && !str_starts_with($updatedFutsal->image, 'http')) {
+                $updatedFutsal->image = asset($updatedFutsal->image);
+            }
+
+            return response()->json($updatedFutsal);
+            
+        } catch (\Exception $e) {
+            Log::error('Error updating futsal: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // UPLOAD IMAGE ONLY (separate endpoint)
+    // =============================================
+    public function uploadImage(Request $request, $futsal): JsonResponse
+    {
+        try {
+            // First check if futsal is active
+            $currentFutsal = DB::table('futsals')->where('id', $futsal)->first();
+            
+            if (!$currentFutsal) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            // Check if futsal is active - prevent image upload if deactivated
+            $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot upload images for a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            $validator = Validator::make($request->all(), [
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+            
+            // Delete old image if exists
+            if ($currentFutsal && $currentFutsal->image) {
+                // Extract filename from URL
+                $path = parse_url($currentFutsal->image, PHP_URL_PATH);
+                $filename = basename($path);
+                
+                // Check if file exists in storage
+                if ($filename && Storage::disk('public')->exists('futsals/' . $filename)) {
+                    Storage::disk('public')->delete('futsals/' . $filename);
+                }
+            }
+
+            // Store new image - use 'public' disk explicitly
+            $path = $request->file('image')->store('futsals', 'public');
+            
+            // Generate the full URL using asset() helper
+            $imageUrl = asset('storage/' . $path);
+
+            DB::table('futsals')
+                ->where('id', $futsal)
+                ->update([
+                    'image' => $imageUrl,
+                    'updated_at' => now(),
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Image uploaded successfully',
+                'image_url' => $imageUrl
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error uploading image: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // =============================================
+    // DELETE IMAGE
+    // =============================================
+    public function deleteImage(Request $request, $futsal): JsonResponse
+    {
+        try {
+            $currentFutsal = DB::table('futsals')->where('id', $futsal)->first();
+            
+            if (!$currentFutsal) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            // Check if futsal is active - prevent image deletion if deactivated
+            $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot delete images from a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            if ($currentFutsal && $currentFutsal->image) {
+                // Extract filename from URL
+                $path = parse_url($currentFutsal->image, PHP_URL_PATH);
+                $filename = basename($path);
+                
+                // Check if file exists in storage
+                if ($filename && Storage::disk('public')->exists('futsals/' . $filename)) {
+                    Storage::disk('public')->delete('futsals/' . $filename);
+                }
+
+                DB::table('futsals')
+                    ->where('id', $futsal)
+                    ->update([
+                        'image' => null,
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Image deleted successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error deleting image: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // FUTSAL SLOTS (Courts)
+    // =============================================
+    public function courts($futsal): JsonResponse
+    {
+        try {
+            if (!Schema::hasTable('futsal_slots')) {
+                return response()->json([
+                    'slots' => [],
+                    'futsal_active' => true,
+                    'can_modify' => true
+                ]);
+            }
+
+            // First check if futsal exists and get its status
+            $futsalData = DB::table('futsals')->where('id', $futsal)->first();
+            if (!$futsalData) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            $isActive = isset($futsalData->active) ? $futsalData->active : true;
+
+            $slots = DB::table('futsal_slots')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select(
+                    'futsal_slots.*',
+                    'time_slots.start_time',
+                    'time_slots.end_time'
+                )
+                ->orderBy('futsal_slots.id', 'asc')
+                ->get();
+
+            // Add a flag to indicate if modifications are allowed
+            $response = [
+                'slots' => $slots,
+                'futsal_active' => $isActive,
+                'can_modify' => $isActive
+            ];
+
+            return response()->json($response);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching courts: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    public function storeCourt(Request $request, $futsal): JsonResponse
+    {
+        try {
+            // Check if futsal is active before allowing slot creation
+            $futsalData = DB::table('futsals')->where('id', $futsal)->first();
+            if (!$futsalData) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            $isActive = isset($futsalData->active) ? $futsalData->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot add slots to a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            $validator = Validator::make($request->all(), [
+                'slot_id'      => 'required|exists:time_slots,id',
+                'price'        => 'required|numeric',
+                'slot_date'    => 'required|date',
+                'is_available' => 'boolean',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $id = DB::table('futsal_slots')->insertGetId([
+                'futsal_id'    => $futsal,
+                'slot_id'      => $request->slot_id,
+                'price'        => $request->price,
+                'slot_date'    => $request->slot_date,
+                'is_available' => $request->is_available ?? true,
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+
+            $slot = DB::table('futsal_slots')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->where('futsal_slots.id', $id)
+                ->select('futsal_slots.*', 'time_slots.start_time', 'time_slots.end_time')
+                ->first();
+
+            return response()->json($slot, 201);
+            
+        } catch (\Exception $e) {
+            Log::error('Error storing court: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    public function updateCourt(Request $request, $futsal, $id): JsonResponse
+    {
+        try {
+            // Check if futsal is active before allowing slot update
+            $futsalData = DB::table('futsals')->where('id', $futsal)->first();
+            if (!$futsalData) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            $isActive = isset($futsalData->active) ? $futsalData->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot update slots in a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            $validator = Validator::make($request->all(), [
+                'slot_id'      => 'required|exists:time_slots,id',
+                'price'        => 'required|numeric',
+                'slot_date'    => 'required|date',
+                'is_available' => 'boolean',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            DB::table('futsal_slots')
+                ->where('id', $id)
+                ->where('futsal_id', $futsal)
+                ->update([
+                    'slot_id'      => $request->slot_id,
+                    'price'        => $request->price,
+                    'slot_date'    => $request->slot_date,
+                    'is_available' => $request->is_available ?? true,
+                    'updated_at'   => now(),
+                ]);
+
+            $slot = DB::table('futsal_slots')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->where('futsal_slots.id', $id)
+                ->select('futsal_slots.*', 'time_slots.start_time', 'time_slots.end_time')
+                ->first();
+
+            return response()->json($slot);
+            
+        } catch (\Exception $e) {
+            Log::error('Error updating court: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    public function toggleActive($futsal, $id): JsonResponse
+    {
+        try {
+            // Check if futsal is active before allowing slot toggle
+            $futsalData = DB::table('futsals')->where('id', $futsal)->first();
+            if (!$futsalData) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            $isActive = isset($futsalData->active) ? $futsalData->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot modify slots in a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            $slot = DB::table('futsal_slots')
+                ->where('id', $id)
+                ->where('futsal_id', $futsal)
+                ->first();
+
+            if (!$slot) {
+                return response()->json(['message' => 'Slot not found'], 404);
+            }
+
+            $new = !$slot->is_available;
+
+            DB::table('futsal_slots')
+                ->where('id', $id)
+                ->update([
+                    'is_available' => $new,
+                    'updated_at'   => now(),
+                ]);
+
+            return response()->json([
+                'id' => $id,
+                'is_available' => $new,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error toggling active: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    public function deleteCourt($futsal, $id): JsonResponse
+    {
+        try {
+            // Check if futsal is active before allowing slot deletion
+            $futsalData = DB::table('futsals')->where('id', $futsal)->first();
+            if (!$futsalData) {
+                return response()->json(['error' => 'Futsal not found'], 404);
+            }
+            
+            $isActive = isset($futsalData->active) ? $futsalData->active : true;
+            if (!$isActive) {
+                return response()->json([
+                    'error' => 'Cannot delete slots from a deactivated futsal',
+                    'code' => 'FUTSAL_DEACTIVATED'
+                ], 403);
+            }
+            
+            DB::table('futsal_slots')
+                ->where('id', $id)
+                ->where('futsal_id', $futsal)
+                ->delete();
+
+            return response()->json(['deleted' => true]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error deleting court: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // TIME SLOTS
+    // =============================================
+    public function timeSlots(): JsonResponse
+    {
+        try {
+            $timeSlots = DB::table('time_slots')
+                ->orderBy('start_time', 'asc')
+                ->get();
+
+            return response()->json($timeSlots);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching time slots: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // BOOKINGS
+    // =============================================
+    public function bookings($futsal): JsonResponse
+    {
+        try {
+            $bookings = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select(
+                    'bookings.id',
+                    'bookings.user_id',
+                    'bookings.futsal_slot_id',
+                    'bookings.booking_date',
+                    'bookings.status',
+                    'bookings.payment_status',
+                    'bookings.created_at',
+                    'bookings.updated_at',
+                    'users.name as user_name',
+                    'users.email as user_email',
+                    'users.phone as user_phone',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time"),
+                    'futsal_slots.slot_date',
+                    'futsal_slots.price',
+                    'futsal_slots.is_available'
+                )
+                ->orderBy('bookings.id', 'desc')
+                ->get();
+
+            return response()->json($bookings);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching bookings: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    public function updateBookingStatus(Request $request, $futsal, $id): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'status' => 'required|in:confirmed,cancelled,pending',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            DB::table('bookings')->where('id', $id)->update([
+                'status' => $request->status,
+                'updated_at' => now(),
+            ]);
+
+            return response()->json(['id' => $id, 'status' => $request->status]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error updating booking status: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // USERS
+    // =============================================
+    public function users($futsal): JsonResponse
+    {
+        try {
+            $users = DB::table('users')
+                ->join('bookings', 'users.id', '=', 'bookings.user_id')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select('users.*')
+                ->distinct()
+                ->orderBy('users.id', 'desc')
+                ->get();
+
+            return response()->json($users);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching users: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // PAYMENTS
+    // =============================================
+    public function payments($futsal): JsonResponse
+    {
+        try {
+            $payments = DB::table('payments')
+                ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select(
+                    'payments.id',
+                    'payments.booking_id',
+                    'payments.amount',
+                    'payments.payment_method',
+                    'payments.transaction_id',
+                    'payments.payment_date',
+                    'payments.created_at',
+                    'users.name as user_name',
+                    'bookings.booking_date',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
+                )
+                ->orderBy('payments.id', 'desc')
+                ->get();
+
+            return response()->json($payments);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching payments: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
+    }
+
+    // =============================================
+    // REPORTS
+    // =============================================
+    public function reports(Request $request, $futsal): JsonResponse
+    {
+        try {
+            // Get date filter if provided
+            $date = $request->date;
+            $period = $request->period ?? 'daily';
+
+            $query = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal);
+
             if ($date) {
-                $query->whereDate('created_at', $d->toDateString());
+                if ($period === 'daily') {
+                    $query->whereDate('bookings.booking_date', $date);
+                } elseif ($period === 'weekly') {
+                    $start = date('Y-m-d', strtotime($date . ' -6 days'));
+                    $query->whereBetween('bookings.booking_date', [$start, $date]);
+                } elseif ($period === 'monthly') {
+                    $month = date('m', strtotime($date));
+                    $year = date('Y', strtotime($date));
+                    $query->whereYear('bookings.booking_date', $year)
+                          ->whereMonth('bookings.booking_date', $month);
+                }
             }
-            $result = $query->selectRaw('DATE(created_at) as day, COUNT(*) as bookings, COALESCE(SUM(amount), SUM(price), 0) as revenue')
-                ->groupBy('day')
-                ->orderBy('day', 'desc')
-                ->get();
-            $data = $result;
-        } elseif ($period === 'weekly') {
-            if (! $date) {
-                $d = Carbon::now()->startOfWeek();
-            }
-            $start = $d->copy()->startOfWeek();
-            $end = $start->copy()->addDays(6)->endOfDay();
-            $result = $query->whereBetween('created_at', [$start, $end])
-                ->selectRaw('DATE(created_at) as day, COUNT(*) as bookings, COALESCE(SUM(amount), SUM(price), 0) as revenue')
-                ->groupBy('day')
-                ->orderBy('day', 'asc')
-                ->get();
-            $data = $result;
-        } else { // monthly
+
+            $totalBookings = $query->count();
+
+            $confirmedBookings = (clone $query)->where('bookings.status', 'confirmed')->count();
+            $cancelledBookings = (clone $query)->where('bookings.status', 'cancelled')->count();
+            $pendingBookings = (clone $query)->where('bookings.status', 'pending')->count();
+
+            // Revenue calculation
+            $revenueQuery = DB::table('payments')
+                ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal);
+
             if ($date) {
-                $month = $d->month;
-                $year = $d->year;
-                $query->whereYear('created_at', $year)->whereMonth('created_at', $month);
+                if ($period === 'daily') {
+                    $revenueQuery->whereDate('payments.payment_date', $date);
+                } elseif ($period === 'weekly') {
+                    $start = date('Y-m-d', strtotime($date . ' -6 days'));
+                    $revenueQuery->whereBetween('payments.payment_date', [$start, $date]);
+                } elseif ($period === 'monthly') {
+                    $month = date('m', strtotime($date));
+                    $year = date('Y', strtotime($date));
+                    $revenueQuery->whereYear('payments.payment_date', $year)
+                                 ->whereMonth('payments.payment_date', $month);
+                }
             }
-            $result = $query->selectRaw('MONTH(created_at) as month, COUNT(*) as bookings, COALESCE(SUM(amount), SUM(price), 0) as revenue')
-                ->groupBy('month')
-                ->orderBy('month', 'desc')
+
+            $totalRevenue = $revenueQuery->sum('payments.amount');
+
+            // Get recent bookings for breakdown
+            $recentBookings = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->orderBy('bookings.id', 'desc')
+                ->limit(10)
+                ->select(
+                    'bookings.id',
+                    'bookings.booking_date',
+                    'bookings.status',
+                    'bookings.payment_status',
+                    'users.name as user_name',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
+                )
                 ->get();
-            $data = $result;
+
+            return response()->json([
+                'total_bookings' => $totalBookings,
+                'confirmed' => $confirmedBookings,
+                'cancelled' => $cancelledBookings,
+                'pending' => $pendingBookings,
+                'revenue' => $totalRevenue,
+                'bookings' => $recentBookings,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error generating report: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
         }
-
-        return response()->json(['data' => $data]);
-    }
-
-    /**
-     * Super-admin: list all futsals
-     */
-    public function allFutsals(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('futsals')) return response()->json([], 200);
-        $futsals = DB::table('futsals')->orderBy('id','asc')->get();
-        return response()->json($futsals);
-    }
-
-    public function storeFutsal(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('futsals')) return response()->json(['message'=>'Futsals table not found'],500);
-        $data = $request->only(['name','location','manager_id']);
-        $id = DB::table('futsals')->insertGetId(array_merge($data, ['created_at'=>now(),'updated_at'=>now(), 'active'=>true]));
-        $f = DB::table('futsals')->where('id',$id)->first();
-        return response()->json($f,201);
-    }
-
-    public function updateFutsal(Request $request, $id): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('futsals')) return response()->json(['message'=>'Futsals table not found'],500);
-        $data = $request->only(['name','location','manager_id','active']);
-        DB::table('futsals')->where('id',$id)->update(array_merge($data, ['updated_at'=>now()]));
-        $f = DB::table('futsals')->where('id',$id)->first();
-        return response()->json($f);
-    }
-
-    public function toggleFutsalActive(Request $request, $id): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('futsals')) return response()->json(['message'=>'Futsals table not found'],500);
-        $f = DB::table('futsals')->where('id',$id)->first(); if (! $f) return response()->json(['message'=>'Not found'],404);
-        $active = property_exists($f,'active') ? ! $f->active : false;
-        DB::table('futsals')->where('id',$id)->update(['active'=>$active,'updated_at'=>now()]);
-        return response()->json(['id'=>$id,'active'=>$active]);
-    }
-
-    public function allBookings(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('bookings')) return response()->json([],200);
-        $b = DB::table('bookings')->orderBy('id','desc')->get();
-        return response()->json($b);
-    }
-
-    public function allUsers(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('users')) return response()->json([],200);
-        $u = DB::table('users')->orderBy('id','desc')->get();
-        return response()->json($u);
-    }
-
-    // Global courts
-    public function allCourts(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('courts')) return response()->json([],200);
-        $c = DB::table('courts')->orderBy('id','asc')->get();
-        return response()->json($c);
-    }
-
-    public function storeCourtGlobal(Request $request): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('courts')) return response()->json(['message'=>'Courts table not found'],500);
-        $data = $request->only(['name','location','price','futsal_id']);
-        $id = DB::table('courts')->insertGetId(array_merge($data,['created_at'=>now(),'updated_at'=>now(),'active'=>true]));
-        $c = DB::table('courts')->where('id',$id)->first();
-        return response()->json($c,201);
-    }
-
-    public function updateCourtGlobal(Request $request, $id): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        $data = $request->only(['name','location','price','active']);
-        DB::table('courts')->where('id',$id)->update(array_merge($data,['updated_at'=>now()]));
-        $c = DB::table('courts')->where('id',$id)->first();
-        return response()->json($c);
-    }
-
-    public function toggleCourtActiveGlobal(Request $request, $id): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('courts')) return response()->json(['message'=>'Courts table not found'],500);
-        $c = DB::table('courts')->where('id',$id)->first(); if (! $c) return response()->json(['message'=>'Not found'],404);
-        $active = property_exists($c,'active') ? ! $c->active : false;
-        DB::table('courts')->where('id',$id)->update(['active'=>$active,'updated_at'=>now()]);
-        return response()->json(['id'=>$id,'active'=>$active]);
-    }
-
-    // Timeslots global by court id
-    public function timeslotsGlobal(Request $request, $courtId): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        if (! Schema::hasTable('timeslots')) return response()->json([],200);
-        $slots = DB::table('timeslots')->where('court_id',$courtId)->orderBy('start')->get();
-        return response()->json($slots);
-    }
-
-    public function storeTimeslotGlobal(Request $request, $courtId): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        $data = $request->only(['start','end','price']);
-        $id = DB::table('timeslots')->insertGetId(array_merge($data,['court_id'=>$courtId,'created_at'=>now(),'updated_at'=>now()]));
-        $s = DB::table('timeslots')->where('id',$id)->first();
-        return response()->json($s,201);
-    }
-
-    public function updateTimeslotGlobal(Request $request, $courtId, $tid): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        $data = $request->only(['start','end','price']);
-        DB::table('timeslots')->where('id',$tid)->where('court_id',$courtId)->update(array_merge($data,['updated_at'=>now()]));
-        $s = DB::table('timeslots')->where('id',$tid)->first();
-        return response()->json($s);
-    }
-
-    public function deleteTimeslotGlobal(Request $request, $courtId, $tid): JsonResponse
-    {
-        if (! $request->user() || $request->user()->role !== 'super-admin') abort(403);
-        DB::table('timeslots')->where('id',$tid)->where('court_id',$courtId)->delete();
-        return response()->json(['deleted'=>true]);
     }
 }

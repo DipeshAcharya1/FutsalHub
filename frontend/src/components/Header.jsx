@@ -1,14 +1,32 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import "../styles/Header.css";
 
 const Header = () => {
   const [open, setOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    setUser(null);
+    navigate("/login");
+  };
 
   return (
     <header className="home-header">
       <div className="home-left">
-        <div className="home-logo">Futsal Hub</div>
+        <Link to="/" className="home-logo">
+          Futsal Hub
+        </Link>
       </div>
 
       <button
@@ -19,19 +37,20 @@ const Header = () => {
         <span className="hamburger" />
       </button>
 
-      <nav className={`home-nav ${open ? "open" : ""}`} onClick={() => setOpen(false)}>
-        <Link to="/" className="nav-link">
-          Home
-        </Link>
-        <Link to="/futsals" className="nav-link">
-          Futsals
-        </Link>
-        <Link to="/bookings" className="nav-link">
-          My Bookings
-        </Link>
-        <Link to="/login" className="nav-link login-btn">
-          Login
-        </Link>
+      <nav className={`home-nav ${open ? "open" : ""}`}>
+        <Link to="/" className="nav-link">Home</Link>
+        <Link to="/futsals" className="nav-link">Futsals</Link>
+        <Link to="/bookings" className="nav-link">My Bookings</Link>
+
+        {user ? (
+          <button onClick={handleLogout} className="logout-btn">
+            Logout
+          </button>
+        ) : (
+          <Link to="/login" className="nav-link login-btn">
+            Login
+          </Link>
+        )}
       </nav>
     </header>
   );

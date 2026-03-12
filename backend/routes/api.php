@@ -1,55 +1,74 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\FutsalController;
+use App\Http\Controllers\AdminDashboardController; 
+use App\Http\Controllers\SuperAdminController;
 
 Route::post('/register', [UserController::class, 'register']);
 Route::post('/login',    [UserController::class, 'login']);
-Route::post('/logout', [UserController::class, 'logout']);
+Route::post('/logout',   [UserController::class, 'logout']);
 
+// ===== PUBLIC ROUTES (No authentication required) =====
+Route::get('/home', [HomeController::class, 'index']);
+Route::get('/popular-futsals', [HomeController::class, 'getPopularFutsals']); 
+Route::get('/futsals/popular', [HomeController::class, 'getPopularFutsals']);
+Route::get('/futsals/stats', [HomeController::class, 'getStats']);
+
+// ===== FUTSAL PUBLIC ROUTES =====
+Route::get('/futsals', [FutsalController::class, 'index']);
+Route::get('/futsals/locations', [FutsalController::class, 'getLocations']);
+Route::get('/futsals/{id}', [FutsalController::class, 'show']); // PUBLIC view
+Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
+
+// ===== PROTECTED ROUTES (require authentication) =====
 Route::middleware('auth:sanctum')->group(function () {
-	// Scoped to a specific futsal (manager-owned)
-	Route::get('/futsals/{futsal}/courts', [AdminDashboardController::class, 'courts']);
-	Route::post('/futsals/{futsal}/courts', [AdminDashboardController::class, 'storeCourt']);
-	Route::put('/futsals/{futsal}/courts/{id}', [AdminDashboardController::class, 'updateCourt']);
-	Route::patch('/futsals/{futsal}/courts/{id}/toggle-active', [AdminDashboardController::class, 'toggleActive']);
 
-	Route::get('/futsals/{futsal}/courts/{id}/timeslots', [AdminDashboardController::class, 'timeslots']);
-	Route::post('/futsals/{futsal}/courts/{id}/timeslots', [AdminDashboardController::class, 'storeTimeslot']);
-	Route::put('/futsals/{futsal}/courts/{id}/timeslots/{tid}', [AdminDashboardController::class, 'updateTimeslot']);
-	Route::delete('/futsals/{futsal}/courts/{id}/timeslots/{tid}', [AdminDashboardController::class, 'deleteTimeslot']);
+    // ===== ADMIN ROUTES (for futsal managers) =====
+    // These must come BEFORE the public /futsals/{id} route
+    Route::get('/admin/futsals/{futsal}', [AdminDashboardController::class, 'futsal']);
+    Route::post('/admin/futsals/{futsal}/update', [AdminDashboardController::class, 'updateFutsal']);
+    Route::post('/admin/futsals/{futsal}/image', [AdminDashboardController::class, 'uploadImage']);
+    Route::delete('/admin/futsals/{futsal}/image', [AdminDashboardController::class, 'deleteImage']);
+    
+    // Time slots
+    Route::get('/time-slots', [AdminDashboardController::class, 'timeSlots']);
+    
+    // Futsal slots (courts)
+    Route::get('/admin/futsals/{futsal}/courts', [AdminDashboardController::class, 'courts']);
+    Route::post('/admin/futsals/{futsal}/courts', [AdminDashboardController::class, 'storeCourt']);
+    Route::put('/admin/futsals/{futsal}/courts/{id}', [AdminDashboardController::class, 'updateCourt']);
+    Route::patch('/admin/futsals/{futsal}/courts/{id}/toggle-active', [AdminDashboardController::class, 'toggleActive']);
+    Route::delete('/admin/futsals/{futsal}/courts/{id}', [AdminDashboardController::class, 'deleteCourt']);
+    
+    // Bookings
+    Route::get('/admin/futsals/{futsal}/bookings', [AdminDashboardController::class, 'bookings']);
+    Route::patch('/admin/futsals/{futsal}/bookings/{id}/status', [AdminDashboardController::class, 'updateBookingStatus']);
+    
+    // Users (for a specific futsal)
+    Route::get('/admin/futsals/{futsal}/users', [AdminDashboardController::class, 'users']);
+    
+    // Payments
+    Route::get('/admin/futsals/{futsal}/payments', [AdminDashboardController::class, 'payments']);
+    
+    // Reports
+    Route::get('/admin/futsals/{futsal}/reports', [AdminDashboardController::class, 'reports']);
 
-	Route::get('/futsals/{futsal}/bookings', [AdminDashboardController::class, 'bookings']);
-	Route::get('/futsals/{futsal}/users', [AdminDashboardController::class, 'users']);
-
-	Route::get('/futsals/{futsal}/reports', [AdminDashboardController::class, 'reports']);
-
-	// Super-admin utilities
-	Route::get('/super-admin/futsals', [\App\Http\Controllers\UserController::class, 'listFutsals']);
-	Route::post('/super-admin/admins', [\App\Http\Controllers\UserController::class, 'createAdmin']);
-
-	// Super-admin full system controls
-	Route::get('/super-admin/futsals/all', [\App\Http\Controllers\AdminDashboardController::class, 'allFutsals']);
-	Route::post('/super-admin/futsals', [\App\Http\Controllers\AdminDashboardController::class, 'storeFutsal']);
-	Route::put('/super-admin/futsals/{id}', [\App\Http\Controllers\AdminDashboardController::class, 'updateFutsal']);
-	Route::patch('/super-admin/futsals/{id}/toggle-active', [\App\Http\Controllers\AdminDashboardController::class, 'toggleFutsalActive']);
-
-	Route::get('/super-admin/bookings', [\App\Http\Controllers\AdminDashboardController::class, 'allBookings']);
-	Route::get('/super-admin/users', [\App\Http\Controllers\AdminDashboardController::class, 'allUsers']);
-
-	// Courts & timeslots global management
-	Route::get('/super-admin/courts', [\App\Http\Controllers\AdminDashboardController::class, 'allCourts']);
-	Route::post('/super-admin/courts', [\App\Http\Controllers\AdminDashboardController::class, 'storeCourtGlobal']);
-	Route::put('/super-admin/courts/{id}', [\App\Http\Controllers\AdminDashboardController::class, 'updateCourtGlobal']);
-	Route::patch('/super-admin/courts/{id}/toggle-active', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCourtActiveGlobal']);
-
-	Route::get('/super-admin/courts/{court}/timeslots', [\App\Http\Controllers\AdminDashboardController::class, 'timeslotsGlobal']);
-	Route::post('/super-admin/courts/{court}/timeslots', [\App\Http\Controllers\AdminDashboardController::class, 'storeTimeslotGlobal']);
-	Route::put('/super-admin/courts/{court}/timeslots/{tid}', [\App\Http\Controllers\AdminDashboardController::class, 'updateTimeslotGlobal']);
-	Route::delete('/super-admin/courts/{court}/timeslots/{tid}', [\App\Http\Controllers\AdminDashboardController::class, 'deleteTimeslotGlobal']);
+    // ===== SUPER ADMIN ROUTES =====
+    Route::prefix('super-admin')->group(function () {
+        Route::get('/futsals', [SuperAdminController::class, 'getFutsals']);
+        Route::post('/futsals', [SuperAdminController::class, 'storeFutsal']);
+        Route::put('/futsals/{id}', [SuperAdminController::class, 'updateFutsal']);
+        Route::patch('/futsals/{id}/toggle-active', [SuperAdminController::class, 'toggleActive']);
+        Route::delete('/futsals/{id}', [SuperAdminController::class, 'deleteFutsal']);
+        Route::get('/admins', [SuperAdminController::class, 'getAdmins']);
+        Route::post('/admins', [SuperAdminController::class, 'createAdmin']);
+        Route::put('/admins/{id}', [SuperAdminController::class, 'updateAdmin']);
+        Route::delete('/admins/{id}', [SuperAdminController::class, 'deleteAdmin']);
+        Route::get('/bookings', [SuperAdminController::class, 'getBookings']);
+        Route::get('/users', [SuperAdminController::class, 'getUsers']);
+        Route::get('/stats', [SuperAdminController::class, 'getStats']);
+    });
 });
-
-
-

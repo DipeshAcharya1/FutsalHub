@@ -59,10 +59,20 @@ class UserController extends Controller
 
 		$token = $user->createToken('auth_token')->plainTextToken;
 
+		$userFutsalId = DB::table('futsals')
+		->where('manager_id', $user->id)
+		->value('id'); // gets the futsal id managed by this admin (or null)
+
 		return response()->json([
 			'access_token' => $token,
 			'token_type' => '',
-			'user' => $user,
+			'user' => [
+				'id' => $user->id,
+				'name' => $user->name,
+				'email' => $user->email,
+				'role' => $user->role,
+				'futsal_id' => $userFutsalId, // include it here!
+			]
 		]);
 	}
 

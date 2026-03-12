@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import "../styles/Footer.css";
 
 const Footer = () => {
@@ -6,20 +7,20 @@ const Footer = () => {
     <footer className="footer">
       <div className="footer-container">
         <div className="footer-section">
-          <h3>Futsal Hub</h3>
+          <h3 className="footer-brand">Futsal Hub</h3>
           <p>
             Book futsals easily, check availability, and manage your games
-            with a modern, user‑friendly interface.
+            with a modern, user-friendly interface.
           </p>
         </div>
 
         <div className="footer-section">
           <h4>Quick Links</h4>
           <ul>
-            <li><a href="/">Home</a></li>
-            <li><a href="/futsals">Futsals</a></li>
-            <li><a href="/bookings">My Bookings</a></li>
-            <li><a href="/login">Login</a></li>
+            <li><Link to="/">Home</Link></li>
+            <li><Link to="/futsals">Futsals</Link></li>
+            <li><Link to="/bookings">My Bookings</Link></li>
+            <li><Link to="/login">Login</Link></li>
           </ul>
         </div>
 
