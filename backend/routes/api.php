@@ -10,21 +10,27 @@ use App\Http\Controllers\SuperAdminController;
 Route::post('/register', [UserController::class, 'register']);
 Route::post('/login',    [UserController::class, 'login']);
 Route::post('/logout',   [UserController::class, 'logout']);
+Route::middleware('auth:sanctum')->get('/verify-token', [UserController::class, 'verifyToken']);
 
-// ===== PUBLIC ROUTES (No authentication required) =====
+//  PUBLIC ROUTES (No authentication required) 
 Route::get('/home', [HomeController::class, 'index']);
 Route::get('/popular-futsals', [HomeController::class, 'getPopularFutsals']); 
 Route::get('/futsals/popular', [HomeController::class, 'getPopularFutsals']);
 Route::get('/futsals/stats', [HomeController::class, 'getStats']);
 
-// ===== FUTSAL PUBLIC ROUTES =====
+//  FUTSAL PUBLIC ROUTES 
 Route::get('/futsals', [FutsalController::class, 'index']);
 Route::get('/futsals/locations', [FutsalController::class, 'getLocations']);
 Route::get('/futsals/{id}', [FutsalController::class, 'show']); // PUBLIC view
 Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
 
-// ===== PROTECTED ROUTES (require authentication) =====
+//  PROTECTED ROUTES (require authentication) 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user/profile', [UserController::class, 'getProfile']);
+    Route::put('/user/profile', [UserController::class, 'updateProfile']);
+    Route::post('/user/change-password', [UserController::class, 'changePassword']);
+    Route::get('/user/bookings', [UserController::class, 'getUserBookings']);
+    Route::patch('/bookings/{id}/cancel', [UserController::class, 'cancelBooking']);
 
     // ===== ADMIN ROUTES (for futsal managers) =====
     // These must come BEFORE the public /futsals/{id} route

@@ -1,7 +1,9 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 const AdminNavbar = ({ user, futsalInfo, futsalActive, tab, setTab }) => {
+  const navigate = useNavigate();
+
   const tabs = [
     ["overview", "Overview"],
     ["slots", "Futsal Slots"],
@@ -10,6 +12,12 @@ const AdminNavbar = ({ user, futsalInfo, futsalActive, tab, setTab }) => {
     ["users", "Users"],
     ["reports", "Reports"],
   ];
+
+  const handleLogout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user");
+    navigate("/login");
+  };
 
   return (
     <nav className="admin-navbar">
@@ -32,13 +40,18 @@ const AdminNavbar = ({ user, futsalInfo, futsalActive, tab, setTab }) => {
         </div>
 
         <div className="nav-user">
-          <span className="user-name">{user?.name || "Admin"}</span>
-          <span className="futsal-name">
-            {futsalInfo?.futsal_name || "Loading..."}
-            {!futsalActive && futsalInfo && (
-              <span className="deactivated-badge">(Deactivated)</span>
-            )}
-          </span>
+          <div className="user-info">
+            <span className="user-name">{user?.name || "Admin"}</span>
+            <span className="futsal-name">
+              {futsalInfo?.futsal_name || "Loading..."}
+              {!futsalActive && futsalInfo && (
+                <span className="deactivated-badge"> (Deactivated)</span>
+              )}
+            </span>
+          </div>
+          <button onClick={handleLogout} className="logout-btn">
+            Logout
+          </button>
         </div>
       </div>
     </nav>

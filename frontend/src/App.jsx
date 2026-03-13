@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Futsals from "./pages/Futsals";
+import Profile from "./pages/UserProfile";
 import FutsalDetails from "./pages/FutsalDetails"; 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -35,6 +36,14 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["super-admin"]}>
               <SuperAdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />
