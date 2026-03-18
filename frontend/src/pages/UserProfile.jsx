@@ -11,7 +11,7 @@ const UserProfile = () => {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState("profile"); // profile, password, bookings
+  const [activeTab, setActiveTab] = useState("profile");
   
   // Profile form
   const [profileForm, setProfileForm] = useState({
@@ -20,11 +20,11 @@ const UserProfile = () => {
     phone: "",
   });
   
-  // Password form
+  // Password form 
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
-    confirm_password: "",
+    new_password_confirmation: "",
   });
   
   // Form errors
@@ -87,8 +87,8 @@ const UserProfile = () => {
     if (!passwordForm.current_password) errors.current_password = "Current password is required";
     if (!passwordForm.new_password) errors.new_password = "New password is required";
     else if (passwordForm.new_password.length < 6) errors.new_password = "Password must be at least 6 characters";
-    if (passwordForm.new_password !== passwordForm.confirm_password) {
-      errors.confirm_password = "Passwords do not match";
+    if (passwordForm.new_password !== passwordForm.new_password_confirmation) {
+      errors.new_password_confirmation = "Passwords do not match";
     }
     return errors;
   };
@@ -104,6 +104,8 @@ const UserProfile = () => {
 
     setLoading(true);
     setError(null);
+    setFormErrors({});
+    
     try {
       const response = await api.put("/user/profile", profileForm);
       
@@ -115,13 +117,20 @@ const UserProfile = () => {
         setFormErrors({});
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to update profile");
+      console.error("Profile update error:", err);
+      
+      if (err.response?.status === 422) {
+        setFormErrors(err.response.data.errors || {});
+        setError(err.response.data.message || "Validation failed");
+      } else {
+        setError(err.response?.data?.message || "Failed to update profile");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Change password
+  // Change password 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     const errors = validatePassword();
@@ -132,34 +141,38 @@ const UserProfile = () => {
 
     setLoading(true);
     setError(null);
-    try {
-      await api.post("/user/change-password", passwordForm);
-      
-      setPasswordForm({
-        current_password: "",
-        new_password: "",
-        confirm_password: "",
-      });
-      setFormErrors({});
-      showSuccess("Password changed successfully");
-      setActiveTab("profile");
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to change password");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Cancel booking
-  const cancelBooking = async (bookingId) => {
-    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    setFormErrors({});
     
     try {
-      await api.patch(`/bookings/${bookingId}/cancel`);
-      showSuccess("Booking cancelled successfully");
-      loadUserBookings();
+      console.log("Sending password change:", passwordForm);
+      
+      const response = await api.post("/user/change-password", passwordForm);
+      
+      if (response.data.success) {
+        setPasswordForm({
+          current_password: "",
+          new_password: "",
+          new_password_confirmation: "",
+        });
+        showSuccess("Password changed successfully");
+        setActiveTab("profile");
+      }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to cancel booking");
+      console.error("Password change error:", err);
+      console.error("Error response:", err.response);
+      
+      if (err.response?.status === 422) {
+        const serverErrors = err.response.data.errors || {};
+        setFormErrors(serverErrors);
+        
+        if (err.response.data.message) {
+          setError(err.response.data.message);
+        }
+      } else {
+        setError(err.response?.data?.message || "Failed to change password");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -266,8 +279,9 @@ const UserProfile = () => {
                       type="tel"
                       value={profileForm.phone}
                       onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})}
-                      placeholder="e.g. 9800000000"
+                      className={formErrors.phone ? "error" : ""}
                     />
+                    {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
                   </div>
 
                   <div className="form-actions">
@@ -308,18 +322,19 @@ const UserProfile = () => {
                     {formErrors.new_password && (
                       <span className="error-text">{formErrors.new_password}</span>
                     )}
+                    <small className="hint">Minimum 6 characters</small>
                   </div>
 
                   <div className="form-group">
                     <label>Confirm New Password</label>
                     <input
                       type="password"
-                      value={passwordForm.confirm_password}
-                      onChange={(e) => setPasswordForm({...passwordForm, confirm_password: e.target.value})}
-                      className={formErrors.confirm_password ? "error" : ""}
+                      value={passwordForm.new_password_confirmation}
+                      onChange={(e) => setPasswordForm({...passwordForm, new_password_confirmation: e.target.value})}
+                      className={formErrors.new_password_confirmation ? "error" : ""}
                     />
-                    {formErrors.confirm_password && (
-                      <span className="error-text">{formErrors.confirm_password}</span>
+                    {formErrors.new_password_confirmation && (
+                      <span className="error-text">{formErrors.new_password_confirmation}</span>
                     )}
                   </div>
 
@@ -368,15 +383,6 @@ const UserProfile = () => {
                             </span>
                           </p>
                         </div>
-                        
-                        {booking.status === "pending" && (
-                          <button
-                            className="cancel-btn"
-                            onClick={() => cancelBooking(booking.id)}
-                          >
-                            Cancel Booking
-                          </button>
-                        )}
                       </div>
                     ))}
                   </div>

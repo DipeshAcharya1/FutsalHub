@@ -10,6 +10,7 @@ import AdminUsers from "./AdminUsers";
 import AdminReports from "./AdminReports";
 import EditFutsalModal from "./EditFutsalModal";
 import SlotModal from "./SlotModal";
+import { generateReportPDF } from "../../utils/pdfGenerator";
 import "../../styles/AdminDashboard.css";
 
 const AdminDashboard = () => {
@@ -20,7 +21,7 @@ const AdminDashboard = () => {
 
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(false);
-  const [slotLoading, setSlotLoading] = useState(false); // Separate loading for slots
+  const [slotLoading, setSlotLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
@@ -130,30 +131,31 @@ const AdminDashboard = () => {
       const res = await api.get("/admin/futsals/" + futsalId + "/courts");
       console.log("loadSlots response:", res.data);
       
-      // Handle different response structures
       let slotsData = [];
+      let availableCount = 0;
       
       if (res.data) {
-        // Case 1: Response has slots property (like { slots: [...], futsal_active: true })
         if (res.data.slots !== undefined) {
           slotsData = res.data.slots;
           if (res.data.futsal_active !== undefined) {
             setFutsalActive(res.data.futsal_active);
             setCanModify(res.data.can_modify);
           }
-        } 
-        // Case 2: Response is directly an array
-        else if (Array.isArray(res.data)) {
+          // Get the available slots count from response
+          availableCount = res.data.available_slots_count || 0;
+        } else if (Array.isArray(res.data)) {
           slotsData = res.data;
-        }
-        // Case 3: Response has data property
-        else if (res.data.data && Array.isArray(res.data.data)) {
-          slotsData = res.data.data;
+          // Calculate available slots (future dates only)
+          const today = new Date().toISOString().split('T')[0];
+          availableCount = slotsData.filter(slot => 
+            slot.is_available && slot.slot_date >= today
+          ).length;
         }
       }
       
       setSlots(slotsData);
       console.log("Slots set to:", slotsData);
+      console.log("Available slots count:", availableCount);
       
     } catch (err) {
       console.error("Failed to load slots:", err);
@@ -224,6 +226,17 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDownloadPDF = (period, date) => {
+    if (!reportData || !futsalInfo) return;
+    
+    generateReportPDF(
+      reportData, 
+      period, 
+      date, 
+      futsalInfo.futsal_name
+    );
+  };
+
   const updateBookingStatus = async (bookingId, status) => {
     setLoading(true);
     try {
@@ -244,9 +257,6 @@ const AdminDashboard = () => {
     }
     
     try {
-      console.log("Toggling slot:", slot.id, "Current status:", slot.is_available);
-      
-      // Optimistic update - update UI immediately
       setSlots(prevSlots => 
         prevSlots.map(s => 
           s.id === slot.id 
@@ -255,20 +265,10 @@ const AdminDashboard = () => {
         )
       );
       
-      const response = await api.patch(`/admin/futsals/${futsalId}/courts/${slot.id}/toggle-active`);
-      
-      console.log("Toggle response:", response.data);
-      
-      // Verify with server by reloading (optional, but ensures consistency)
-      // Comment this out if you want faster UI, uncomment if you want consistency
-      // await loadSlots();
-      
+      await api.patch(`/admin/futsals/${futsalId}/courts/${slot.id}/toggle-active`);
       showSuccess(`Slot marked as ${slot.is_available ? 'unavailable' : 'available'}`);
       
     } catch (err) {
-      console.error("Toggle error:", err);
-      
-      // Revert optimistic update on error
       setSlots(prevSlots => 
         prevSlots.map(s => 
           s.id === slot.id 
@@ -466,7 +466,10 @@ const AdminDashboard = () => {
   const todayDate = new Date().toISOString().slice(0, 10);
   const todayBookings = bookings.filter(b => b.booking_date === todayDate).length;
   const totalRevenue = payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-  const availableSlots = slots.filter(s => s.is_available !== false).length;
+  const today = new Date().toISOString().split('T')[0];
+  const availableSlots = slots.filter(s => {
+  return s.is_available && s.slot_date >= today;
+  }).length;
   const filteredBookings = bookingFilter === "all" ? bookings : bookings.filter(b => b.status === bookingFilter);
 
   return (
@@ -510,9 +513,11 @@ const AdminDashboard = () => {
           />
         )}
 
+
         {tab === "slots" && (
           <AdminSlots
             slots={slots}
+            bookings={bookings}  // Pass bookings to check which slots are booked
             canModify={canModify}
             loading={slotLoading}
             onAddSlot={() => {
@@ -567,6 +572,7 @@ const AdminDashboard = () => {
             reportDate={reportDate}
             setReportDate={setReportDate}
             onGenerateReport={generateReport}
+            onDownloadPDF={handleDownloadPDF}
             loading={loading}
           />
         )}

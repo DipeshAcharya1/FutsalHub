@@ -6,6 +6,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\FutsalController;
 use App\Http\Controllers\AdminDashboardController; 
 use App\Http\Controllers\SuperAdminController;
+use App\Http\Controllers\BookingController;
 
 Route::post('/register', [UserController::class, 'register']);
 Route::post('/login',    [UserController::class, 'login']);
@@ -19,10 +20,9 @@ Route::get('/futsals/popular', [HomeController::class, 'getPopularFutsals']);
 Route::get('/futsals/stats', [HomeController::class, 'getStats']);
 
 //  FUTSAL PUBLIC ROUTES 
-Route::get('/futsals', [FutsalController::class, 'index']);
-Route::get('/futsals/locations', [FutsalController::class, 'getLocations']);
-Route::get('/futsals/{id}', [FutsalController::class, 'show']); // PUBLIC view
-Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
+Route::get('/futsals', [FutsalController::class, 'index']); 
+Route::get('/futsals/locations', [FutsalController::class, 'getLocations']); 
+Route::get('/futsals/{id}', [FutsalController::class, 'show']); // PUBLIC view Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
 
 //  PROTECTED ROUTES (require authentication) 
 Route::middleware('auth:sanctum')->group(function () {
@@ -77,4 +77,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/users', [SuperAdminController::class, 'getUsers']);
         Route::get('/stats', [SuperAdminController::class, 'getStats']);
     });
+
+
+    // Bookings routes
+    Route::post('/bookings', [BookingController::class, 'store']);
+    Route::get('/user/bookings', [BookingController::class, 'getUserBookings']);
+    Route::get('/bookings/{id}', [BookingController::class, 'show']);
+    Route::patch('/bookings/{id}/cancel', [BookingController::class, 'cancel']);
 });

@@ -78,18 +78,6 @@ const SlotModal = ({
             {slotErrors.price && <span className="field-error">{slotErrors.price}</span>}
           </div>
 
-          <div className="form-field">
-            <label className="form-label">
-              <input
-                type="checkbox"
-                checked={slotForm.is_available}
-                onChange={e => setSlotForm({ ...slotForm, is_available: e.target.checked })}
-                style={{ marginRight: 8 }}
-              />
-              Available for booking
-            </label>
-          </div>
-
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={loading}>
               {loading ? "Saving..." : editingSlot ? "Update Slot" : "Create Slot"}

@@ -239,7 +239,8 @@ class AdminDashboardController extends Controller
                 return response()->json([
                     'slots' => [],
                     'futsal_active' => true,
-                    'can_modify' => true
+                    'can_modify' => true,
+                    'available_slots_count' => 0
                 ]);
             }
 
@@ -251,6 +252,7 @@ class AdminDashboardController extends Controller
             
             $isActive = isset($futsalData->active) ? $futsalData->active : true;
 
+            // Get all slots (for display in slots tab)
             $slots = DB::table('futsal_slots')
                 ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
                 ->where('futsal_slots.futsal_id', $futsal)
@@ -262,11 +264,20 @@ class AdminDashboardController extends Controller
                 ->orderBy('futsal_slots.id', 'asc')
                 ->get();
 
+            // Get available slots count (only future dates)
+            $today = now()->toDateString();
+            $availableSlotsCount = DB::table('futsal_slots')
+                ->where('futsal_id', $futsal)
+                ->where('is_available', true)
+                ->where('slot_date', '>=', $today)
+                ->count();
+
             // Add a flag to indicate if modifications are allowed
             $response = [
                 'slots' => $slots,
                 'futsal_active' => $isActive,
-                'can_modify' => $isActive
+                'can_modify' => $isActive,
+                'available_slots_count' => $availableSlotsCount // Add this for overview
             ];
 
             return response()->json($response);
@@ -603,64 +614,59 @@ class AdminDashboardController extends Controller
     public function reports(Request $request, $futsal): JsonResponse
     {
         try {
-            // Get date filter if provided
             $date = $request->date;
             $period = $request->period ?? 'daily';
 
-            $query = DB::table('bookings')
+            // Base query with joins
+            $baseQuery = DB::table('bookings')
                 ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
                 ->where('futsal_slots.futsal_id', $futsal);
 
+            // Clone for different purposes
+            $summaryQuery = clone $baseQuery;
+            $revenueQuery = clone $baseQuery;
+            $bookingsQuery = clone $baseQuery;
+
+            // Apply date filter to ALL queries
             if ($date) {
                 if ($period === 'daily') {
-                    $query->whereDate('bookings.booking_date', $date);
+                    $summaryQuery->whereDate('bookings.booking_date', $date);
+                    $revenueQuery->whereDate('bookings.booking_date', $date);
+                    $bookingsQuery->whereDate('bookings.booking_date', $date);
                 } elseif ($period === 'weekly') {
                     $start = date('Y-m-d', strtotime($date . ' -6 days'));
-                    $query->whereBetween('bookings.booking_date', [$start, $date]);
+                    $summaryQuery->whereBetween('bookings.booking_date', [$start, $date]);
+                    $revenueQuery->whereBetween('bookings.booking_date', [$start, $date]);
+                    $bookingsQuery->whereBetween('bookings.booking_date', [$start, $date]);
                 } elseif ($period === 'monthly') {
-                    $month = date('m', strtotime($date));
                     $year = date('Y', strtotime($date));
-                    $query->whereYear('bookings.booking_date', $year)
-                          ->whereMonth('bookings.booking_date', $month);
+                    $month = date('m', strtotime($date));
+                    $summaryQuery->whereYear('bookings.booking_date', $year)
+                                ->whereMonth('bookings.booking_date', $month);
+                    $revenueQuery->whereYear('bookings.booking_date', $year)
+                                ->whereMonth('bookings.booking_date', $month);
+                    $bookingsQuery->whereYear('bookings.booking_date', $year)
+                                ->whereMonth('bookings.booking_date', $month);
                 }
             }
 
-            $totalBookings = $query->count();
+            // Get counts from filtered summary query
+            $totalBookings = $summaryQuery->count();
+            $confirmedBookings = (clone $summaryQuery)->where('bookings.status', 'confirmed')->count();
+            $cancelledBookings = (clone $summaryQuery)->where('bookings.status', 'cancelled')->count();
+            $pendingBookings = (clone $summaryQuery)->where('bookings.status', 'pending')->count();
 
-            $confirmedBookings = (clone $query)->where('bookings.status', 'confirmed')->count();
-            $cancelledBookings = (clone $query)->where('bookings.status', 'cancelled')->count();
-            $pendingBookings = (clone $query)->where('bookings.status', 'pending')->count();
+            // Get revenue from filtered revenue query (paid bookings only)
+            $totalRevenue = $revenueQuery
+                ->where('bookings.payment_status', 'paid')
+                ->sum('futsal_slots.price');
 
-            // Revenue calculation
-            $revenueQuery = DB::table('payments')
-                ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
-                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-                ->where('futsal_slots.futsal_id', $futsal);
-
-            if ($date) {
-                if ($period === 'daily') {
-                    $revenueQuery->whereDate('payments.payment_date', $date);
-                } elseif ($period === 'weekly') {
-                    $start = date('Y-m-d', strtotime($date . ' -6 days'));
-                    $revenueQuery->whereBetween('payments.payment_date', [$start, $date]);
-                } elseif ($period === 'monthly') {
-                    $month = date('m', strtotime($date));
-                    $year = date('Y', strtotime($date));
-                    $revenueQuery->whereYear('payments.payment_date', $year)
-                                 ->whereMonth('payments.payment_date', $month);
-                }
-            }
-
-            $totalRevenue = $revenueQuery->sum('payments.amount');
-
-            // Get recent bookings for breakdown
-            $recentBookings = DB::table('bookings')
-                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+            // Get recent bookings from filtered bookings query
+            $recentBookings = $bookingsQuery
                 ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
                 ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-                ->where('futsal_slots.futsal_id', $futsal)
                 ->orderBy('bookings.id', 'desc')
-                ->limit(10)
+                ->limit(50)
                 ->select(
                     'bookings.id',
                     'bookings.booking_date',

@@ -343,6 +343,48 @@ body {
   color: #95a5a6;
 }
 
+/* Booked slot styling */
+.booked-slot {
+  background-color: #f0f7ff;
+}
+
+.booked-slot:hover {
+  background-color: #e6f0fa !important;
+}
+
+.status-badge.status-booked {
+  background: #3498db;
+  color: white;
+}
+
+/* Disabled button styles */
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.action-btn[disabled] {
+  position: relative;
+}
+
+.action-btn[disabled]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 1000;
+}
+
+
+
 /* ========== STATUS BADGES ========== */
 .status-badge {
   display: inline-block;

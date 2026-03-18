@@ -12,8 +12,6 @@ use Illuminate\Support\Facades\Schema;
 
 class UserController extends Controller
 {
-	
-
 	/**
 	 * Register a new user and return an API token.
 	 */
@@ -62,7 +60,7 @@ class UserController extends Controller
 
 		$userFutsalId = DB::table('futsals')
 		->where('manager_id', $user->id)
-		->value('id'); // gets the futsal id managed by this admin (or null)
+		->value('id');
 
 		return response()->json([
 			'access_token' => $token,
@@ -72,7 +70,7 @@ class UserController extends Controller
 				'name' => $user->name,
 				'email' => $user->email,
 				'role' => $user->role,
-				'futsal_id' => $userFutsalId, // include it here!
+				'futsal_id' => $userFutsalId,
 			]
 		]);
 	}
@@ -118,7 +116,7 @@ class UserController extends Controller
 			$validator = Validator::make($request->all(), [
 				'name' => 'required|string|max:255',
 				'email' => 'required|email|unique:users,email,' . $request->user()->id,
-				'phone' => 'nullable|string|max:20',
+				'phone' => 'required|string|max:10',
 			]);
 
 			if ($validator->fails()) {
@@ -274,7 +272,6 @@ class UserController extends Controller
 		}
 	}
 
-
 	/**
 	 * Return all futsals (super-admin only)
 	 */
@@ -296,7 +293,6 @@ class UserController extends Controller
 	public function verifyToken(Request $request): JsonResponse
 	{
 		try {
-			// If we reach here, the auth middleware already verified the token
 			return response()->json([
 				'valid' => true,
 				'user' => $request->user()
@@ -307,10 +303,10 @@ class UserController extends Controller
 				'message' => 'Invalid token'
 			], 401);
 		}
-}
+	}
 
 	/**
-	 * Create an admin (futsal manager) user. If futsal_id provided, assign manager_id.
+	 * Create an admin (futsal manager) user.
 	 */
 	public function createAdmin(Request $request): JsonResponse
 	{
@@ -339,7 +335,4 @@ class UserController extends Controller
 
 		return response()->json($user, 201);
 	}
-
-	
-	
 }
