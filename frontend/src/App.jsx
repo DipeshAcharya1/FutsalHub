@@ -10,7 +10,7 @@ import BookingSuccess from "./pages/futsal/BookingSuccess";
 import MyBookings from "./pages/bookings/MyBookings";
 import BookingDetails from "./pages/bookings/BookingDetails";
 import AdminDashboard from "./pages/admin/AdminDashboard";
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const App = () => {

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
 import api from "../api/axios";
 import "../styles/SuperAdminDashboard.css";
 
 const SuperAdminDashboard = () => {
+  const navigate = useNavigate();
   const [futsals, setFutsals] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,10 +38,27 @@ const SuperAdminDashboard = () => {
     manager_id: '' 
   });
 
+  // Get user info
+  const userStr = localStorage.getItem("user");
+  const user = userStr ? JSON.parse(userStr) : null;
+
   // Show success message
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  // Logout function
+  const handleLogout = async () => {
+    try {
+      await api.post("/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user");
+      navigate("/login");
+    }
   };
 
   // ===== DATA LOADING FUNCTIONS =====
@@ -202,18 +221,42 @@ const SuperAdminDashboard = () => {
   return (
     <ProtectedRoute allowedRoles={["super-admin"]}>
       <div className="super-admin-dashboard">
-        {/* Success/Error Messages */}
-        {error && <div className="alert alert-error">{error}</div>}
-        {successMsg && <div className="alert alert-success">{successMsg}</div>}
-        
-        <main className="admin-main">
-          {/* Header */}
-          <section className="admin-head">
+        {/* Header with Logout */}
+        <header className="super-admin-header">
+          <div className="header-left">
             <h1>Super Admin Dashboard</h1>
-            <p>Manage futsals and admins</p>
-          </section>
+            <span className="admin-badge">Super Admin</span>
+          </div>
+          <div className="header-right">
+            <div className="user-info">
+              <span className="user-name">{user?.name || 'Super Admin'}</span>
+              <span className="user-email">{user?.email || ''}</span>
+            </div>
+            <button onClick={handleLogout} className="logout-btn">
+              Logout
+            </button>
+          </div>
+        </header>
 
-          {/* Navigation Tabs - Only Futsals and Admins */}
+        {/* Main Content */}
+        <main className="admin-main">
+          {/* Success/Error Messages */}
+          {error && <div className="alert alert-error">{error}</div>}
+          {successMsg && <div className="alert alert-success">{successMsg}</div>}
+          
+          {/* Stats Summary */}
+          <div className="stats-summary">
+            <div className="stat-card">
+              <span className="stat-value">{futsals.length}</span>
+              <span className="stat-label">Total Futsals</span>
+            </div>
+            <div className="stat-card">
+              <span className="stat-value">{admins.length}</span>
+              <span className="stat-label">Total Admins</span>
+            </div>
+          </div>
+
+          {/* Navigation Tabs */}
           <nav className="admin-nav">
             <button 
               className={tab === 'futsals' ? 'active' : ''} 
@@ -252,16 +295,16 @@ const SuperAdminDashboard = () => {
                       <th>Manager</th>
                       <th>Status</th>
                       <th>Actions</th>
-                    </tr>
+                     </tr>
                   </thead>
                   <tbody>
                     {futsals.map(f => (
                       <tr key={f.id}>
-                        <td>{f.id}</td>
-                        <td>{f.futsal_name}</td>
-                        <td>{f.location}</td>
-                        <td>{f.contact_number || '-'}</td>
-                        <td>
+                         <td>{f.id}</td>
+                         <td>{f.futsal_name}</td>
+                         <td>{f.location}</td>
+                         <td>{f.contact_number || '-'}</td>
+                         <td>
                           {f.manager_name ? (
                             <div>
                               <div>{f.manager_name}</div>
@@ -270,13 +313,13 @@ const SuperAdminDashboard = () => {
                           ) : (
                             <span className="no-manager">No manager assigned</span>
                           )}
-                        </td>
-                        <td>
+                         </td>
+                         <td>
                           <span className={`status-badge ${f.active ? 'active' : 'inactive'}`}>
                             {f.active ? 'Active' : 'Inactive'}
                           </span>
-                        </td>
-                        <td>
+                         </td>
+                         <td>
                           <div className="action-buttons">
                             <button 
                               className="btn-edit"
@@ -300,8 +343,8 @@ const SuperAdminDashboard = () => {
                               Delete
                             </button>
                           </div>
-                        </td>
-                      </tr>
+                         </td>
+                       </tr>
                     ))}
                     {futsals.length === 0 && !loading && (
                       <tr>

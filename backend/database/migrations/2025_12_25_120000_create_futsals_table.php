@@ -16,6 +16,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->string('image', 255)->nullable();
             $table->foreignId('manager_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->boolean('active')->default(true);
             $table->timestamps();
         });
     }
