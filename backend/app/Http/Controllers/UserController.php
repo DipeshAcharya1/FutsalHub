@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
@@ -70,6 +72,7 @@ class UserController extends Controller
 				'name' => $user->name,
 				'email' => $user->email,
 				'role' => $user->role,
+				'avatar' => $user->avatar,
 				'futsal_id' => $userFutsalId,
 			]
 		]);
@@ -95,6 +98,9 @@ class UserController extends Controller
 	{
 		try {
 			$user = $request->user();
+			if ($user->avatar && !str_starts_with($user->avatar, 'http')) {
+				$user->avatar = asset($user->avatar);
+			}
 			return response()->json([
 				'success' => true,
 				'data' => $user
@@ -116,7 +122,7 @@ class UserController extends Controller
 			$validator = Validator::make($request->all(), [
 				'name' => 'required|string|max:255',
 				'email' => 'required|email|unique:users,email,' . $request->user()->id,
-				'phone' => 'required|string|max:10',
+				'phone' => 'required|string|max:10|regex:/^[0-9]+$/',
 			]);
 
 			if ($validator->fails()) {
@@ -141,6 +147,82 @@ class UserController extends Controller
 			return response()->json([
 				'success' => false,
 				'message' => 'Failed to update profile'
+			], 500);
+		}
+	}
+
+	/**
+	 * Upload profile avatar
+	 */
+	public function uploadAvatar(Request $request): JsonResponse
+	{
+		try {
+			$validator = Validator::make($request->all(), [
+				'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+			]);
+
+			if ($validator->fails()) {
+				return response()->json([
+					'success' => false,
+					'errors' => $validator->errors()
+				], 422);
+			}
+
+			$user = $request->user();
+			
+			// Delete old avatar
+			if ($user->avatar) {
+				$oldPath = str_replace(asset('storage/'), '', $user->avatar);
+				if (Storage::disk('public')->exists($oldPath)) {
+					Storage::disk('public')->delete($oldPath);
+				}
+			}
+
+			// Upload new avatar
+			$path = $request->file('avatar')->store('avatars', 'public');
+			$avatarUrl = asset('storage/' . $path);
+			
+			$user->avatar = $avatarUrl;
+			$user->save();
+
+			return response()->json([
+				'success' => true,
+				'message' => 'Avatar uploaded successfully',
+				'avatar_url' => $avatarUrl
+			]);
+		} catch (\Exception $e) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Failed to upload avatar'
+			], 500);
+		}
+	}
+
+	/**
+	 * Delete profile avatar
+	 */
+	public function deleteAvatar(Request $request): JsonResponse
+	{
+		try {
+			$user = $request->user();
+			
+			if ($user->avatar) {
+				$oldPath = str_replace(asset('storage/'), '', $user->avatar);
+				if (Storage::disk('public')->exists($oldPath)) {
+					Storage::disk('public')->delete($oldPath);
+				}
+				$user->avatar = null;
+				$user->save();
+			}
+
+			return response()->json([
+				'success' => true,
+				'message' => 'Avatar deleted successfully'
+			]);
+		} catch (\Exception $e) {
+			return response()->json([
+				'success' => false,
+				'message' => 'Failed to delete avatar'
 			], 500);
 		}
 	}
@@ -246,10 +328,10 @@ class UserController extends Controller
 				], 404);
 			}
 
-			if ($booking->status !== 'pending') {
+			if ($booking->status !== 'confirmed') {
 				return response()->json([
 					'success' => false,
-					'message' => 'Only pending bookings can be cancelled'
+					'message' => 'Only confirmed bookings can be cancelled'
 				], 400);
 			}
 

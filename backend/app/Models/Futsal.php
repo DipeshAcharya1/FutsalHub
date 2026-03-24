@@ -16,6 +16,7 @@ class Futsal extends Model
         'description',
         'image',
         'manager_id',
+        'active',
     ];
 
     public function manager()

@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 
 const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onDeleteSlot, bookings }) => {
+  const [showExpired, setShowExpired] = useState(false);
   
   const handleToggle = async (slot) => {
     try {
@@ -10,39 +11,38 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
     }
   };
 
-  // Helper function to check slot booking status
   const getSlotBookingStatus = (slotId) => {
     if (!bookings) return null;
-    
     const slotBookings = bookings.filter(booking => booking.futsal_slot_id === slotId);
-    
     if (slotBookings.length === 0) return null;
-    
-    // Check for confirmed bookings first (these are definite)
     const hasConfirmed = slotBookings.some(b => b.status === 'confirmed');
     if (hasConfirmed) return 'confirmed';
-    
-    // Then check for pending
-    const hasPending = slotBookings.some(b => b.status === 'pending');
-    if (hasPending) return 'pending';
-    
     return null;
   };
 
-  // Helper function to check availability (handles both boolean and number)
   const isAvailable = (slot) => {
-    if (slot.is_available === true || 
-        slot.is_available === 1 || 
-        slot.is_available === "1" || 
-        slot.is_available === "true") {
+    if (slot.is_available === true || slot.is_available === 1 || slot.is_available === "1") {
       return true;
     }
     return false;
   };
 
-  // Filter out past slots - only show today and future
+  const isExpired = (slot) => {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const slotDateTime = new Date(slot.slot_date + 'T' + slot.end_time);
+    
+    if (slot.slot_date < today) return true;
+    if (slot.slot_date === today && now > slotDateTime) return true;
+    return false;
+  };
+
   const today = new Date().toISOString().split('T')[0];
-  const futureSlots = slots.filter(slot => slot.slot_date >= today);
+  
+  // Filter slots based on showExpired toggle
+  const filteredSlots = showExpired 
+    ? slots 
+    : slots.filter(slot => slot.slot_date >= today);
 
   return (
     <div>
@@ -54,10 +54,32 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
             {!canModify && <span style={{ color: '#856404', display: 'block', marginTop: '5px' }}>View only - modifications disabled</span>}
           </p>
         </div>
-        {canModify && (
-          <button className="btn btn-primary" onClick={onAddSlot}>Add New Slot</button>
-        )}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            className={`btn ${showExpired ? 'btn-secondary' : 'btn-primary'}`}
+            onClick={() => setShowExpired(!showExpired)}
+            style={{ fontSize: '14px' }}
+          >
+            {showExpired ? "Hide Expired Slots" : "Show Expired Slots"}
+          </button>
+          {canModify && (
+            <button className="btn btn-primary" onClick={onAddSlot}>Add New Slot</button>
+          )}
+        </div>
       </div>
+
+      {showExpired && (
+        <div className="info-message" style={{ 
+          background: '#fff3cd', 
+          border: '1px solid #ffeaa7', 
+          borderRadius: '8px', 
+          padding: '10px 15px', 
+          marginBottom: '20px',
+          color: '#856404'
+        }}>
+          <span>ℹ️</span> Showing all slots including expired ones. Expired slots cannot be edited.
+        </div>
+      )}
 
       <div className="card">
         <div className="table-responsive">
@@ -68,84 +90,65 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
                 <th>Time Slot</th>
                 <th>Date</th>
                 <th>Price (Rs.)</th>
-                <th>Available</th>
+                <th>Status</th>
                 <th>Actions</th>
-              </tr>
-            </thead>
+              </tr>  
+              </thead>
             <tbody>
-              {futureSlots.length > 0 ? (
-                futureSlots.map(slot => {
+              {filteredSlots.length > 0 ? (
+                filteredSlots.map(slot => {
                   const available = isAvailable(slot);
+                  const expired = isExpired(slot);
                   const bookingStatus = getSlotBookingStatus(slot.id);
                   
-                  // Determine if slot should be editable
-                  const isEditable = !bookingStatus || bookingStatus === 'pending';
+                  const isEditable = !bookingStatus && !expired;
                   
-                  // Get status display text and class
                   let statusText = 'Available';
                   let statusClass = 'status-available';
                   
-                  if (bookingStatus === 'confirmed') {
-                    statusText = 'Confirmed';
+                  if (expired) {
+                    statusText = 'Expired';
+                    statusClass = 'status-expired';
+                  } else if (bookingStatus === 'confirmed') {
+                    statusText = 'Booked';
                     statusClass = 'status-confirmed';
-                  } else if (bookingStatus === 'pending') {
-                    statusText = 'Pending';
-                    statusClass = 'status-pending';
+                  } else if (!available) {
+                    statusText = 'Unavailable';
+                    statusClass = 'status-unavailable';
                   }
                   
                   return (
-                    <tr key={slot.id} className={bookingStatus ? 'booked-slot' : ''}>
+                    <tr key={slot.id} className={bookingStatus ? 'booked-slot' : expired ? 'expired-slot' : ''}>
                       <td>{slot.id}</td>
-                      <td>{slot.start_time && slot.end_time ? `${slot.start_time} - ${slot.end_time}` : "N/A"}</td>
-                      <td>{slot.slot_date || "N/A"}</td>
-                      <td>Rs. {slot.price || "N/A"}</td>
+                      <td><strong>{slot.start_time} - {slot.end_time}</strong></td>
+                      <td>{slot.slot_date}</td>
+                      <td>Rs. {slot.price}</td>
                       <td>
-                        <span className={!available ? "status-badge status-unavailable" : "status-badge status-available"}>
-                          {available ? "Yes" : "No"}
+                        <span className={`status-badge ${statusClass}`}>
+                          {statusText}
                         </span>
                       </td>
                       <td>
-                        {canModify ? (
+                        {canModify && !expired && !bookingStatus && (
                           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                            <button 
-                              className="action-btn" 
-                              onClick={() => onEditSlot(slot)}
-                              disabled={!isEditable}
-                              title={!isEditable ? "Cannot edit confirmed booking" : "Edit slot"}
-                              style={!isEditable ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                            >
-                              Edit
-                            </button>
-                            <button 
-                              className="action-btn" 
-                              onClick={() => handleToggle(slot)}
-                              disabled={!isEditable}
-                              title={!isEditable ? "Cannot change availability of confirmed booking" : "Toggle availability"}
-                              style={!isEditable ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                            >
+                            <button className="action-btn" onClick={() => onEditSlot(slot)}>Edit</button>
+                            <button className="action-btn" onClick={() => handleToggle(slot)}>
                               {available ? "Mark Unavailable" : "Mark Available"}
                             </button>
-                            <button 
-                              className="action-btn action-btn-danger" 
-                              onClick={() => onDeleteSlot(slot)}
-                              disabled={!isEditable}
-                              title={!isEditable ? "Cannot delete confirmed booking" : "Delete slot"}
-                              style={!isEditable ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                            >
-                              Delete
-                            </button>
+                            <button className="action-btn action-btn-danger" onClick={() => onDeleteSlot(slot)}>Delete</button>
                           </div>
-                        ) : (
-                          <span className="small-text">No actions</span>
                         )}
+                        {expired && <span className="small-text" style={{ color: '#6c757d' }}>Expired - No actions</span>}
+                        {bookingStatus && !expired && <span className="small-text" style={{ color: '#0c5460' }}>Booked - Cannot modify</span>}
+                        {!canModify && <span className="small-text">No actions</span>}
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="empty-row">
-                    No future slots found. {canModify && "Click Add New Slot to create one."}
+                  <td colSpan={6} className="empty-row">
+                    {showExpired ? "No slots found." : "No future slots found. Click Add New Slot to create one."}
                   </td>
                 </tr>
               )}
@@ -153,6 +156,17 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
           </table>
         </div>
       </div>
+      
+      {!showExpired && filteredSlots.length > 0 && (
+        <div style={{ marginTop: '15px', textAlign: 'center', color: '#6c757d', fontSize: '12px' }}>
+          Showing only upcoming slots. <button 
+            onClick={() => setShowExpired(true)} 
+            style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Click here
+          </button> to view expired slots.
+        </div>
+      )}
     </div>
   );
 };

@@ -763,3 +763,36 @@ body {
     margin: 2px 0;
   }
 }
+
+/* Info Message */
+.info-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.info-message span {
+  font-size: 18px;
+}
+
+/* Expired Slot Styling */
+.expired-slot {
+  background-color: #f8f9fa;
+  opacity: 0.7;
+}
+
+.expired-slot:hover {
+  background-color: #f8f9fa;
+}
+
+.status-expired {
+  background-color: #e9ecef;
+  color: #6c757d;
+}
+
+/* Small text for no actions */
+.small-text {
+  font-size: 12px;
+  color: #6c757d;
+}

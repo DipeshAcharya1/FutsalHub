@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import "../styles/Auth.css";
+import GoogleButton from "../components/GoogleButton";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -115,6 +116,8 @@ const Login = () => {
               </Link>
             </p>
           </form>
+          <Link to="/forgot-password">Forgot Password?</Link>
+          <GoogleButton />
         </div>
       </div>
     </div>

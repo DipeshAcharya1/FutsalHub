@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 class BookingController extends Controller
 {
     /**
-     * Create a new booking
+     * Create a new booking - AUTOMATICALLY CONFIRMED
      */
     public function store(Request $request): JsonResponse
     {
@@ -21,6 +21,8 @@ class BookingController extends Controller
             $validator = Validator::make($request->all(), [
                 'futsal_slot_id' => 'required|exists:futsal_slots,id',
                 'booking_date' => 'required|date',
+                'payment_method' => 'required|in:esewa,khalti,online,cash',
+                'transaction_id' => 'nullable|string',
             ]);
 
             if ($validator->fails()) {
@@ -61,7 +63,7 @@ class BookingController extends Controller
                 ], 400);
             }
             
-            // IMPORTANT FIX: If slot is today, check if the time has already passed
+            // If slot is today, check if the time has already passed
             if ($slot->slot_date === $today && $slot->timeSlot && $slot->timeSlot->start_time <= $currentTime) {
                 return response()->json([
                     'success' => false,
@@ -72,7 +74,7 @@ class BookingController extends Controller
             // Check if user already has a booking for this slot
             $existingBooking = Booking::where('futsal_slot_id', $slot->id)
                 ->where('user_id', $user->id)
-                ->whereIn('status', ['pending', 'confirmed'])
+                ->where('status', 'confirmed')
                 ->first();
 
             if ($existingBooking) {
@@ -86,24 +88,35 @@ class BookingController extends Controller
             DB::beginTransaction();
 
             try {
-                // Create booking
+                // Create booking - AUTOMATICALLY CONFIRMED (no pending status)
                 $booking = Booking::create([
                     'user_id' => $user->id,
                     'futsal_slot_id' => $slot->id,
                     'booking_date' => $request->booking_date,
-                    'status' => 'pending',
-                    'payment_status' => 'unpaid',
+                    'status' => 'confirmed', // Auto confirmed
+                    'payment_status' => 'paid',
                 ]);
 
                 // Mark slot as unavailable
                 $slot->is_available = false;
                 $slot->save();
 
+                // Create payment record
+                DB::table('payments')->insert([
+                    'booking_id' => $booking->id,
+                    'amount' => $slot->price,
+                    'payment_method' => $request->payment_method,
+                    'transaction_id' => $request->transaction_id,
+                    'payment_date' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
                 DB::commit();
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Booking created successfully',
+                    'message' => 'Booking confirmed successfully',
                     'data' => [
                         'booking' => $booking,
                         'futsal' => $slot->futsal,
@@ -138,6 +151,10 @@ class BookingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function($booking) {
+                    // Check if slot time has passed
+                    $slotDateTime = $booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->end_time;
+                    $isPast = now() > $slotDateTime;
+                    
                     return [
                         'id' => $booking->id,
                         'booking_date' => $booking->booking_date,
@@ -148,6 +165,7 @@ class BookingController extends Controller
                         'start_time' => $booking->futsalSlot->timeSlot->start_time ?? null,
                         'end_time' => $booking->futsalSlot->timeSlot->end_time ?? null,
                         'price' => $booking->futsalSlot->price,
+                        'is_past' => $isPast,
                         'created_at' => $booking->created_at,
                     ];
                 });
@@ -212,24 +230,16 @@ class BookingController extends Controller
     }
 
     /**
-     * Cancel booking (Admin only - moved to AdminDashboardController)
-     * This method is kept for backward compatibility but should not be used by users
+     * Cancel booking - Only for future bookings
      */
     public function cancel(Request $request, $id): JsonResponse
     {
         try {
             $user = $request->user();
             
-            // Check if user is admin
-            if ($user->role !== 'admin' && $user->role !== 'super-admin') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized. Only admins can cancel bookings.'
-                ], 403);
-            }
-            
-            $booking = Booking::with('futsalSlot')
+            $booking = Booking::with('futsalSlot.timeSlot')
                 ->where('id', $id)
+                ->where('user_id', $user->id)
                 ->first();
 
             if (!$booking) {
@@ -239,10 +249,19 @@ class BookingController extends Controller
                 ], 404);
             }
 
-            if ($booking->status !== 'pending') {
+            if ($booking->status !== 'confirmed') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only pending bookings can be cancelled'
+                    'message' => 'Only confirmed bookings can be cancelled'
+                ], 400);
+            }
+
+            // Check if slot time has already passed
+            $slotDateTime = $booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->end_time;
+            if (now() > $slotDateTime) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot cancel past bookings'
                 ], 400);
             }
 

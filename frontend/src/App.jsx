@@ -12,6 +12,9 @@ import BookingDetails from "./pages/bookings/BookingDetails";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
+import GoogleCallback from "./pages/GoogleCallback";
+import ResetPassword from "./pages/ResetPassword";
+import ForgotPassword from "./pages/ForgotPassword";
 
 const App = () => {
   return (
@@ -24,6 +27,9 @@ const App = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/futsal/:id" element={<FutsalDetails />} />
         <Route path="/futsals" element={<Futsals />} />
+        <Route path="/google-callback" element={<GoogleCallback />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Protected Routes */}
         <Route

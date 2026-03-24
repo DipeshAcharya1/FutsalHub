@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class AdminDashboardController extends Controller
 {
@@ -29,15 +30,12 @@ class AdminDashboardController extends Controller
                 return response()->json(['error' => 'Futsal not found'], 404);
             }
             
-            // Check if futsal is active (default to true if column doesn't exist)
             $isActive = isset($data->active) ? $data->active : true;
             
-            // Ensure image URL is full URL
             if ($data->image && !str_starts_with($data->image, 'http')) {
                 $data->image = asset($data->image);
             }
             
-            // Add status information
             $data->is_active = $isActive;
             $data->access_level = $isActive ? 'full' : 'read_only';
             
@@ -50,20 +48,15 @@ class AdminDashboardController extends Controller
         }
     }
 
-    // =============================================
-    // UPDATE FUTSAL INFO 
-    // =============================================
     public function updateFutsal(Request $request, $futsal): JsonResponse
     {
         try {
-            // First check if futsal is active
             $currentFutsal = DB::table('futsals')->where('id', $futsal)->first();
             
             if (!$currentFutsal) {
                 return response()->json(['error' => 'Futsal not found'], 404);
             }
             
-            // Check if futsal is active - prevent updates if deactivated
             $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
             if (!$isActive) {
                 return response()->json([
@@ -83,23 +76,18 @@ class AdminDashboardController extends Controller
                 return response()->json(['errors' => $validator->errors()], 422);
             }
 
-            $updateData = [
-                'futsal_name' => $request->futsal_name,
-                'location' => $request->location,
-                'contact_number' => $request->contact_number,
-                'description' => $request->description,
-                'updated_at' => now(),
-            ];
-
             DB::table('futsals')
                 ->where('id', $futsal)
-                ->update($updateData);
+                ->update([
+                    'futsal_name' => $request->futsal_name,
+                    'location' => $request->location,
+                    'contact_number' => $request->contact_number,
+                    'description' => $request->description,
+                    'updated_at' => now(),
+                ]);
 
-            $updatedFutsal = DB::table('futsals')
-                ->where('id', $futsal)
-                ->first();
+            $updatedFutsal = DB::table('futsals')->where('id', $futsal)->first();
 
-            // Ensure image URL is full URL
             if ($updatedFutsal->image && !str_starts_with($updatedFutsal->image, 'http')) {
                 $updatedFutsal->image = asset($updatedFutsal->image);
             }
@@ -112,20 +100,15 @@ class AdminDashboardController extends Controller
         }
     }
 
-    // =============================================
-    // UPLOAD IMAGE ONLY (separate endpoint)
-    // =============================================
     public function uploadImage(Request $request, $futsal): JsonResponse
     {
         try {
-            // First check if futsal is active
             $currentFutsal = DB::table('futsals')->where('id', $futsal)->first();
             
             if (!$currentFutsal) {
                 return response()->json(['error' => 'Futsal not found'], 404);
             }
             
-            // Check if futsal is active - prevent image upload if deactivated
             $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
             if (!$isActive) {
                 return response()->json([
@@ -142,22 +125,16 @@ class AdminDashboardController extends Controller
                 return response()->json(['errors' => $validator->errors()], 422);
             }
             
-            // Delete old image if exists
-            if ($currentFutsal && $currentFutsal->image) {
-                // Extract filename from URL
+            if ($currentFutsal->image) {
                 $path = parse_url($currentFutsal->image, PHP_URL_PATH);
                 $filename = basename($path);
                 
-                // Check if file exists in storage
                 if ($filename && Storage::disk('public')->exists('futsals/' . $filename)) {
                     Storage::disk('public')->delete('futsals/' . $filename);
                 }
             }
 
-            // Store new image - use 'public' disk explicitly
             $path = $request->file('image')->store('futsals', 'public');
-            
-            // Generate the full URL using asset() helper
             $imageUrl = asset('storage/' . $path);
 
             DB::table('futsals')
@@ -179,9 +156,6 @@ class AdminDashboardController extends Controller
         }
     }
 
-    // =============================================
-    // DELETE IMAGE
-    // =============================================
     public function deleteImage(Request $request, $futsal): JsonResponse
     {
         try {
@@ -191,7 +165,6 @@ class AdminDashboardController extends Controller
                 return response()->json(['error' => 'Futsal not found'], 404);
             }
             
-            // Check if futsal is active - prevent image deletion if deactivated
             $isActive = isset($currentFutsal->active) ? $currentFutsal->active : true;
             if (!$isActive) {
                 return response()->json([
@@ -200,12 +173,10 @@ class AdminDashboardController extends Controller
                 ], 403);
             }
             
-            if ($currentFutsal && $currentFutsal->image) {
-                // Extract filename from URL
+            if ($currentFutsal->image) {
                 $path = parse_url($currentFutsal->image, PHP_URL_PATH);
                 $filename = basename($path);
                 
-                // Check if file exists in storage
                 if ($filename && Storage::disk('public')->exists('futsals/' . $filename)) {
                     Storage::disk('public')->delete('futsals/' . $filename);
                 }
@@ -235,24 +206,33 @@ class AdminDashboardController extends Controller
     public function courts($futsal): JsonResponse
     {
         try {
-            if (!Schema::hasTable('futsal_slots')) {
-                return response()->json([
-                    'slots' => [],
-                    'futsal_active' => true,
-                    'can_modify' => true,
-                    'available_slots_count' => 0
-                ]);
-            }
-
-            // First check if futsal exists and get its status
             $futsalData = DB::table('futsals')->where('id', $futsal)->first();
             if (!$futsalData) {
                 return response()->json(['error' => 'Futsal not found'], 404);
             }
             
             $isActive = isset($futsalData->active) ? $futsalData->active : true;
+            
+            // Auto-expire past slots
+            $today = now()->toDateString();
+            $now = now()->format('H:i:s');
+            
+            DB::table('futsal_slots')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->where(function($query) use ($today, $now) {
+                    $query->where('futsal_slots.slot_date', '<', $today)
+                          ->orWhere(function($q) use ($today, $now) {
+                              $q->where('futsal_slots.slot_date', '=', $today)
+                                ->where('time_slots.end_time', '<', $now);
+                          });
+                })
+                ->update([
+                    'futsal_slots.is_available' => false,
+                    'futsal_slots.updated_at' => now(),
+                ]);
 
-            // Get all slots (for display in slots tab)
+            // Get all slots
             $slots = DB::table('futsal_slots')
                 ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
                 ->where('futsal_slots.futsal_id', $futsal)
@@ -261,26 +241,22 @@ class AdminDashboardController extends Controller
                     'time_slots.start_time',
                     'time_slots.end_time'
                 )
-                ->orderBy('futsal_slots.id', 'asc')
+                ->orderBy('futsal_slots.slot_date', 'asc')
+                ->orderBy('time_slots.start_time', 'asc')
                 ->get();
 
-            // Get available slots count (only future dates)
-            $today = now()->toDateString();
             $availableSlotsCount = DB::table('futsal_slots')
                 ->where('futsal_id', $futsal)
                 ->where('is_available', true)
                 ->where('slot_date', '>=', $today)
                 ->count();
 
-            // Add a flag to indicate if modifications are allowed
-            $response = [
+            return response()->json([
                 'slots' => $slots,
                 'futsal_active' => $isActive,
                 'can_modify' => $isActive,
-                'available_slots_count' => $availableSlotsCount // Add this for overview
-            ];
-
-            return response()->json($response);
+                'available_slots_count' => $availableSlotsCount
+            ]);
             
         } catch (\Exception $e) {
             Log::error('Error fetching courts: ' . $e->getMessage());
@@ -291,7 +267,6 @@ class AdminDashboardController extends Controller
     public function storeCourt(Request $request, $futsal): JsonResponse
     {
         try {
-            // Check if futsal is active before allowing slot creation
             $futsalData = DB::table('futsals')->where('id', $futsal)->first();
             if (!$futsalData) {
                 return response()->json(['error' => 'Futsal not found'], 404);
@@ -306,9 +281,9 @@ class AdminDashboardController extends Controller
             }
             
             $validator = Validator::make($request->all(), [
-                'slot_id'      => 'required|exists:time_slots,id',
-                'price'        => 'required|numeric',
-                'slot_date'    => 'required|date',
+                'slot_id' => 'required|exists:time_slots,id',
+                'price' => 'required|numeric|min:0',
+                'slot_date' => 'required|date|after_or_equal:today',
                 'is_available' => 'boolean',
             ]);
 
@@ -317,13 +292,13 @@ class AdminDashboardController extends Controller
             }
 
             $id = DB::table('futsal_slots')->insertGetId([
-                'futsal_id'    => $futsal,
-                'slot_id'      => $request->slot_id,
-                'price'        => $request->price,
-                'slot_date'    => $request->slot_date,
+                'futsal_id' => $futsal,
+                'slot_id' => $request->slot_id,
+                'price' => $request->price,
+                'slot_date' => $request->slot_date,
                 'is_available' => $request->is_available ?? true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
             $slot = DB::table('futsal_slots')
@@ -343,7 +318,6 @@ class AdminDashboardController extends Controller
     public function updateCourt(Request $request, $futsal, $id): JsonResponse
     {
         try {
-            // Check if futsal is active before allowing slot update
             $futsalData = DB::table('futsals')->where('id', $futsal)->first();
             if (!$futsalData) {
                 return response()->json(['error' => 'Futsal not found'], 404);
@@ -358,9 +332,9 @@ class AdminDashboardController extends Controller
             }
             
             $validator = Validator::make($request->all(), [
-                'slot_id'      => 'required|exists:time_slots,id',
-                'price'        => 'required|numeric',
-                'slot_date'    => 'required|date',
+                'slot_id' => 'required|exists:time_slots,id',
+                'price' => 'required|numeric|min:0',
+                'slot_date' => 'required|date',
                 'is_available' => 'boolean',
             ]);
 
@@ -372,11 +346,11 @@ class AdminDashboardController extends Controller
                 ->where('id', $id)
                 ->where('futsal_id', $futsal)
                 ->update([
-                    'slot_id'      => $request->slot_id,
-                    'price'        => $request->price,
-                    'slot_date'    => $request->slot_date,
+                    'slot_id' => $request->slot_id,
+                    'price' => $request->price,
+                    'slot_date' => $request->slot_date,
                     'is_available' => $request->is_available ?? true,
-                    'updated_at'   => now(),
+                    'updated_at' => now(),
                 ]);
 
             $slot = DB::table('futsal_slots')
@@ -396,18 +370,9 @@ class AdminDashboardController extends Controller
     public function toggleActive($futsal, $id): JsonResponse
     {
         try {
-            // Check if futsal is active before allowing slot toggle
             $futsalData = DB::table('futsals')->where('id', $futsal)->first();
             if (!$futsalData) {
                 return response()->json(['error' => 'Futsal not found'], 404);
-            }
-            
-            $isActive = isset($futsalData->active) ? $futsalData->active : true;
-            if (!$isActive) {
-                return response()->json([
-                    'error' => 'Cannot modify slots in a deactivated futsal',
-                    'code' => 'FUTSAL_DEACTIVATED'
-                ], 403);
             }
             
             $slot = DB::table('futsal_slots')
@@ -425,7 +390,7 @@ class AdminDashboardController extends Controller
                 ->where('id', $id)
                 ->update([
                     'is_available' => $new,
-                    'updated_at'   => now(),
+                    'updated_at' => now(),
                 ]);
 
             return response()->json([
@@ -442,18 +407,9 @@ class AdminDashboardController extends Controller
     public function deleteCourt($futsal, $id): JsonResponse
     {
         try {
-            // Check if futsal is active before allowing slot deletion
             $futsalData = DB::table('futsals')->where('id', $futsal)->first();
             if (!$futsalData) {
                 return response()->json(['error' => 'Futsal not found'], 404);
-            }
-            
-            $isActive = isset($futsalData->active) ? $futsalData->active : true;
-            if (!$isActive) {
-                return response()->json([
-                    'error' => 'Cannot delete slots from a deactivated futsal',
-                    'code' => 'FUTSAL_DEACTIVATED'
-                ], 403);
             }
             
             DB::table('futsal_slots')
@@ -488,7 +444,7 @@ class AdminDashboardController extends Controller
     }
 
     // =============================================
-    // BOOKINGS
+    // BOOKINGS - ADMIN VIEW ONLY (NO EDIT/DELETE)
     // =============================================
     public function bookings($futsal): JsonResponse
     {
@@ -512,8 +468,7 @@ class AdminDashboardController extends Controller
                     'users.phone as user_phone',
                     DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time"),
                     'futsal_slots.slot_date',
-                    'futsal_slots.price',
-                    'futsal_slots.is_available'
+                    'futsal_slots.price'
                 )
                 ->orderBy('bookings.id', 'desc')
                 ->get();
@@ -526,28 +481,14 @@ class AdminDashboardController extends Controller
         }
     }
 
+    // Admin cannot update booking status (only view)
+    // This method is disabled for admin
     public function updateBookingStatus(Request $request, $futsal, $id): JsonResponse
     {
-        try {
-            $validator = Validator::make($request->all(), [
-                'status' => 'required|in:confirmed,cancelled,pending',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-
-            DB::table('bookings')->where('id', $id)->update([
-                'status' => $request->status,
-                'updated_at' => now(),
-            ]);
-
-            return response()->json(['id' => $id, 'status' => $request->status]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error updating booking status: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
-        }
+        return response()->json([
+            'error' => 'Admin cannot modify booking status',
+            'message' => 'Bookings are automatically confirmed and cannot be modified by admin'
+        ], 403);
     }
 
     // =============================================
@@ -617,52 +558,31 @@ class AdminDashboardController extends Controller
             $date = $request->date;
             $period = $request->period ?? 'daily';
 
-            // Base query with joins
             $baseQuery = DB::table('bookings')
                 ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
                 ->where('futsal_slots.futsal_id', $futsal);
 
-            // Clone for different purposes
-            $summaryQuery = clone $baseQuery;
-            $revenueQuery = clone $baseQuery;
-            $bookingsQuery = clone $baseQuery;
-
-            // Apply date filter to ALL queries
             if ($date) {
                 if ($period === 'daily') {
-                    $summaryQuery->whereDate('bookings.booking_date', $date);
-                    $revenueQuery->whereDate('bookings.booking_date', $date);
-                    $bookingsQuery->whereDate('bookings.booking_date', $date);
+                    $baseQuery->whereDate('bookings.booking_date', $date);
                 } elseif ($period === 'weekly') {
                     $start = date('Y-m-d', strtotime($date . ' -6 days'));
-                    $summaryQuery->whereBetween('bookings.booking_date', [$start, $date]);
-                    $revenueQuery->whereBetween('bookings.booking_date', [$start, $date]);
-                    $bookingsQuery->whereBetween('bookings.booking_date', [$start, $date]);
+                    $baseQuery->whereBetween('bookings.booking_date', [$start, $date]);
                 } elseif ($period === 'monthly') {
                     $year = date('Y', strtotime($date));
                     $month = date('m', strtotime($date));
-                    $summaryQuery->whereYear('bookings.booking_date', $year)
-                                ->whereMonth('bookings.booking_date', $month);
-                    $revenueQuery->whereYear('bookings.booking_date', $year)
-                                ->whereMonth('bookings.booking_date', $month);
-                    $bookingsQuery->whereYear('bookings.booking_date', $year)
-                                ->whereMonth('bookings.booking_date', $month);
+                    $baseQuery->whereYear('bookings.booking_date', $year)
+                              ->whereMonth('bookings.booking_date', $month);
                 }
             }
 
-            // Get counts from filtered summary query
-            $totalBookings = $summaryQuery->count();
-            $confirmedBookings = (clone $summaryQuery)->where('bookings.status', 'confirmed')->count();
-            $cancelledBookings = (clone $summaryQuery)->where('bookings.status', 'cancelled')->count();
-            $pendingBookings = (clone $summaryQuery)->where('bookings.status', 'pending')->count();
+            $totalBookings = $baseQuery->count();
+            $confirmedBookings = (clone $baseQuery)->where('bookings.status', 'confirmed')->count();
+            $cancelledBookings = (clone $baseQuery)->where('bookings.status', 'cancelled')->count();
+            $pendingBookings = (clone $baseQuery)->where('bookings.status', 'pending')->count();
+            $totalRevenue = (clone $baseQuery)->where('bookings.payment_status', 'paid')->sum('futsal_slots.price');
 
-            // Get revenue from filtered revenue query (paid bookings only)
-            $totalRevenue = $revenueQuery
-                ->where('bookings.payment_status', 'paid')
-                ->sum('futsal_slots.price');
-
-            // Get recent bookings from filtered bookings query
-            $recentBookings = $bookingsQuery
+            $recentBookings = (clone $baseQuery)
                 ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
                 ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
                 ->orderBy('bookings.id', 'desc')

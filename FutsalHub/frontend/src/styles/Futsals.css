@@ -1,0 +1,623 @@
+/* =============================================
+   FUTSALS PAGE - LIGHT THEME
+   ============================================= */
+
+.futsals-page {
+  min-height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ecf0f1 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif !important;
+}
+
+.futsals-main {
+  flex: 1 !important;
+  max-width: 1200px !important;
+  margin: 0 auto !important;
+  padding: 40px 20px 60px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* =============================================
+   HEADER SECTION
+   ============================================= */
+.futsals-head {
+  margin-bottom: 30px !important;
+}
+
+.futsals-head h1 {
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  color: #2c3e50 !important;
+  margin-bottom: 8px !important;
+  font-family: inherit !important;
+}
+
+.futsals-head p {
+  font-size: 16px !important;
+  color: #7f8c8d !important;
+  margin: 0 !important;
+}
+
+/* =============================================
+   SEARCH SECTION
+   ============================================= */
+.futsals-search-section {
+  margin-bottom: 30px !important;
+}
+
+.futsals-search-row {
+  position: relative !important;
+  max-width: 500px !important;
+  margin-bottom: 15px !important;
+}
+
+.futsals-search-input {
+  width: 100% !important;
+  padding: 12px 40px 12px 20px !important;
+  border-radius: 8px !important;
+  border: 1px solid #e0e0e0 !important;
+  background: #ffffff !important;
+  color: #2c3e50 !important;
+  font-size: 15px !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.3s ease !important;
+  box-sizing: border-box !important;
+}
+
+.futsals-search-input:focus {
+  outline: none !important;
+  border-color: #3498db !important;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1) !important;
+}
+
+.futsals-search-input::placeholder {
+  color: #95a5a6 !important;
+  opacity: 1 !important;
+}
+
+.clear-search-btn {
+  position: absolute !important;
+  right: 10px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  background: none !important;
+  border: none !important;
+  color: #95a5a6 !important;
+  font-size: 24px !important;
+  cursor: pointer !important;
+  padding: 0 5px !important;
+  line-height: 1 !important;
+  transition: color 0.3s ease !important;
+}
+
+.clear-search-btn:hover {
+  color: #e74c3c !important;
+}
+
+/* =============================================
+   FILTERS SECTION
+   ============================================= */
+.futsals-filters {
+  display: flex !important;
+  gap: 15px !important;
+  margin-top: 5px !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+}
+
+.filter-select {
+  padding: 10px 15px !important;
+  border-radius: 8px !important;
+  border: 1px solid #e0e0e0 !important;
+  background: white !important;
+  color: #2c3e50 !important;
+  font-size: 14px !important;
+  min-width: 200px !important;
+  cursor: pointer !important;
+  height: auto !important;
+}
+
+.filter-select:focus {
+  outline: none !important;
+  border-color: #3498db !important;
+}
+
+.clear-filters-btn {
+  padding: 10px 20px !important;
+  border-radius: 8px !important;
+  border: 1px solid #e74c3c !important;
+  background: white !important;
+  color: #e74c3c !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+}
+
+.clear-filters-btn:hover {
+  background: #e74c3c !important;
+  color: white !important;
+}
+
+/* =============================================
+   RESULTS COUNT
+   ============================================= */
+.results-count {
+  color: #7f8c8d !important;
+  font-size: 14px !important;
+  margin-bottom: 20px !important;
+  display: block !important;
+}
+
+/* =============================================
+   SECTION TITLE
+   ============================================= */
+.futsals-section-title {
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  color: #2c3e50 !important;
+  margin: 0 0 25px 0 !important;
+  position: relative !important;
+}
+
+.futsals-section-title::after {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  bottom: -10px !important;
+  width: 60px !important;
+  height: 3px !important;
+  background: #3498db !important;
+  border-radius: 2px !important;
+}
+
+/* =============================================
+   FUTSAL CARDS LIST
+   ============================================= */
+.futsals-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.futsal-card {
+  display: flex !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  border: 1px solid #e0e0e0 !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.3s ease !important;
+  margin: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.futsal-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1) !important;
+  border-color: #3498db !important;
+}
+
+.futsal-image-container {
+  width: 120px !important;
+  height: 120px !important;
+  margin-right: 20px !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  background: linear-gradient(135deg, #3498db, #2c3e50) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.futsal-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+.no-image {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: linear-gradient(135deg, #95a5a6, #7f8c8d) !important;
+  color: white !important;
+  font-size: 14px !important;
+  text-align: center !important;
+  padding: 10px !important;
+  box-sizing: border-box !important;
+}
+
+.futsal-content {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  padding-right: 20px !important;
+}
+
+.futsal-name {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  color: #2c3e50 !important;
+  margin: 0 0 8px 0 !important;
+  line-height: 1.3 !important;
+}
+
+.futsal-location {
+  color: #7f8c8d !important;
+  font-size: 14px !important;
+  margin: 0 0 8px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+}
+
+.futsal-description {
+  color: #2c3e50 !important;
+  font-size: 14px !important;
+  margin: 0 0 12px 0 !important;
+  line-height: 1.5 !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.futsal-meta {
+  display: flex !important;
+  gap: 20px !important;
+  align-items: center !important;
+  margin-top: 5px !important;
+  flex-wrap: wrap !important;
+}
+
+.futsal-slots {
+  color: #27ae60 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.futsal-price {
+  color: #3498db !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.futsal-side {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  min-width: 120px !important;
+}
+
+.futsal-button {
+  padding: 12px 24px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background: #3498db !important;
+  color: white !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 5px rgba(52, 152, 219, 0.2) !important;
+  text-decoration: none !important;
+}
+
+.futsal-button:hover {
+  background: #2980b9 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3) !important;
+}
+
+.futsal-button:active {
+  transform: translateY(0) !important;
+}
+
+/* =============================================
+   SKELETON LOADING
+   ============================================= */
+@keyframes loadingAnimation {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.futsal-card.skeleton {
+  pointer-events: none !important;
+}
+
+.skeleton .futsal-image-container {
+  background: linear-gradient(90deg, #ecf0f1 25%, #f5f5f5 50%, #ecf0f1 75%) !important;
+  background-size: 200% 100% !important;
+  animation: loadingAnimation 1.5s infinite !important;
+}
+
+.skeleton-title {
+  height: 24px !important;
+  width: 70% !important;
+  background: #ecf0f1 !important;
+  border-radius: 4px !important;
+  margin-bottom: 10px !important;
+}
+
+.skeleton-line {
+  height: 16px !important;
+  width: 90% !important;
+  background: #ecf0f1 !important;
+  border-radius: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+.skeleton-line.short {
+  width: 50% !important;
+}
+
+.skeleton-button {
+  height: 40px !important;
+  width: 120px !important;
+  background: #ecf0f1 !important;
+  border-radius: 6px !important;
+}
+
+/* =============================================
+   NO RESULTS STATE
+   ============================================= */
+.no-results {
+  text-align: center !important;
+  padding: 60px 20px !important;
+  background: white !important;
+  border-radius: 12px !important;
+  border: 2px dashed #e0e0e0 !important;
+}
+
+.no-results p {
+  color: #7f8c8d !important;
+  font-size: 16px !important;
+  margin-bottom: 20px !important;
+}
+
+/* =============================================
+   PAGINATION
+   ============================================= */
+.pagination {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-top: 40px !important;
+  flex-wrap: wrap !important;
+}
+
+.page-numbers {
+  display: flex !important;
+  gap: 5px !important;
+  align-items: center !important;
+}
+
+.page-number {
+  min-width: 40px !important;
+  height: 40px !important;
+  border-radius: 6px !important;
+  border: 1px solid #e0e0e0 !important;
+  background: white !important;
+  color: #2c3e50 !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.page-number:hover:not(.active) {
+  border-color: #3498db !important;
+  color: #3498db !important;
+}
+
+.page-number.active {
+  background: #3498db !important;
+  border-color: #3498db !important;
+  color: white !important;
+  cursor: default !important;
+}
+
+.page-ellipsis {
+  min-width: 30px !important;
+  text-align: center !important;
+  color: #95a5a6 !important;
+}
+
+.page-btn {
+  padding: 10px 20px !important;
+  border-radius: 6px !important;
+  border: 1px solid #3498db !important;
+  background: white !important;
+  color: #3498db !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  min-width: 100px !important;
+  text-decoration: none !important;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: #3498db !important;
+  color: white !important;
+}
+
+.page-btn:disabled {
+  border-color: #e0e0e0 !important;
+  color: #95a5a6 !important;
+  cursor: not-allowed !important;
+  background: #f5f5f5 !important;
+}
+
+/* =============================================
+   RESPONSIVE DESIGN
+   ============================================= */
+
+@media (max-width: 900px) {
+  .futsals-main {
+    padding: 30px 20px 40px !important;
+  }
+
+  .futsals-head h1 {
+    font-size: 28px !important;
+  }
+
+  .futsal-card {
+    flex-direction: column !important;
+  }
+
+  .futsal-image-container {
+    width: 100% !important;
+    height: 160px !important;
+    margin-right: 0 !important;
+    margin-bottom: 15px !important;
+  }
+
+  .futsal-content {
+    padding-right: 0 !important;
+  }
+
+  .futsal-side {
+    justify-content: flex-start !important;
+    margin-top: 15px !important;
+  }
+
+  .futsal-button {
+    width: 100% !important;
+    text-align: center !important;
+  }
+  
+  .filter-select {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .futsals-main {
+    padding: 20px 15px 30px !important;
+  }
+
+  .futsals-head h1 {
+    font-size: 24px !important;
+  }
+
+  .futsals-head p {
+    font-size: 14px !important;
+  }
+
+  .futsals-search-row {
+    max-width: 100% !important;
+  }
+  
+  .futsals-search-input {
+    font-size: 14px !important;
+    padding: 10px 35px 10px 15px !important;
+  }
+  
+  .clear-search-btn {
+    font-size: 20px !important;
+    right: 8px !important;
+  }
+
+  .futsals-section-title {
+    font-size: 20px !important;
+  }
+
+  .futsal-card {
+    padding: 15px !important;
+  }
+
+  .futsal-image-container {
+    height: 140px !important;
+  }
+
+  .futsal-name {
+    font-size: 18px !important;
+  }
+
+  .futsal-button {
+    padding: 10px 20px !important;
+    font-size: 13px !important;
+  }
+  
+  .futsals-filters {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+  
+  .filter-select {
+    min-width: 100% !important;
+  }
+  
+  .clear-filters-btn {
+    width: 100% !important;
+  }
+  
+  .pagination {
+    gap: 10px !important;
+  }
+  
+  .page-numbers {
+    order: -1 !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+  }
+  
+  .page-btn {
+    width: 100% !important;
+  }
+  
+  .page-btn.prev-btn {
+    order: 1 !important;
+  }
+  
+  .page-btn.next-btn {
+    order: 2 !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .futsals-main {
+    padding: 15px 12px 25px !important;
+  }
+
+  .futsals-head h1 {
+    font-size: 22px !important;
+  }
+
+  .futsal-card {
+    padding: 12px !important;
+  }
+
+  .futsal-image-container {
+    height: 120px !important;
+  }
+
+  .futsal-meta {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+}

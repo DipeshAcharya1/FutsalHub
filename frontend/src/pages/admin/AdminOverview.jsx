@@ -2,9 +2,12 @@ import React from "react";
 
 const AdminOverview = ({ 
   futsalInfo, futsalLoading, futsalActive, canModify,
-  bookings, pendingCount, confirmedCount, todayBookings, availableSlots,
+  bookings, confirmedCount, todayBookings, availableSlots,
   onEditFutsal, setTab 
 }) => {
+  // Remove pendingCount - only confirmed bookings
+  const totalBookings = bookings.length;
+
   return (
     <div>
       <h2 className="page-title">Overview</h2>
@@ -16,11 +19,7 @@ const AdminOverview = ({
       <div className="stats-row">
         <div className="stat-box">
           <div className="stat-label">Total Bookings</div>
-          <div className="stat-num">{bookings.length}</div>
-        </div>
-        <div className="stat-box">
-          <div className="stat-label">Pending</div>
-          <div className="stat-num">{pendingCount}</div>
+          <div className="stat-num">{totalBookings}</div>
         </div>
         <div className="stat-box">
           <div className="stat-label">Confirmed</div>
