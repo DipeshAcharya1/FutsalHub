@@ -134,19 +134,17 @@ const AdminsTab = ({
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Managed Futsal</th>
                 <th>Actions</th>
-              </tr>
-            </thead>
+              </tr>  
+              </thead>
             <tbody>
               {admins.map((admin) => (
                 <tr key={admin.id}>
-                  <td>{admin.id}</td>
-                  <td>{admin.name}</td>
+                  <td><strong>{admin.name}</strong></td>
                   <td>{admin.email}</td>
                   <td>{admin.phone || "-"}</td>
                   <td>

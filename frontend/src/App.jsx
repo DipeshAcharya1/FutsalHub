@@ -5,7 +5,6 @@ import Login from "./pages/Login";
 import Futsals from "./pages/Futsals";
 import Profile from "./pages/UserProfile";
 import FutsalDetails from "./pages/futsal/FutsalDetails";
-import BookingConfirmation from "./pages/futsal/BookingConfirmation";
 import BookingSuccess from "./pages/futsal/BookingSuccess";
 import MyBookings from "./pages/bookings/MyBookings";
 import BookingDetails from "./pages/bookings/BookingDetails";
@@ -15,6 +14,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import GoogleCallback from "./pages/GoogleCallback";
 import ResetPassword from "./pages/ResetPassword";
 import ForgotPassword from "./pages/ForgotPassword";
+import PaymentVerify from "./pages/KhaltiVerify";
 
 const App = () => {
   return (
@@ -30,16 +30,9 @@ const App = () => {
         <Route path="/google-callback" element={<GoogleCallback />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/payment/verify" element={<PaymentVerify />} />
 
         {/* Protected Routes */}
-        <Route
-          path="/futsal/:id/confirm-booking"
-          element={
-            <ProtectedRoute>
-              <BookingConfirmation />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/booking/success"
           element={

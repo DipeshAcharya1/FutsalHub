@@ -69,10 +69,25 @@ const AdminReports = ({
     }
   };
 
+  // Safe check for reportData - FIX THE ERROR HERE
+  const getStatusBadge = (status, refundStatus) => {
+    if (status === 'cancelled') {
+      if (refundStatus === 'pending') {
+        return <span className="status-badge status-cancelled-refund-pending">Cancelled (Refunding)</span>;
+      } else if (refundStatus === 'completed') {
+        return <span className="status-badge status-cancelled-refunded">Cancelled (Refunded)</span>;
+      } else if (refundStatus === 'failed') {
+        return <span className="status-badge status-cancelled-refund-failed">Cancelled (Refund Failed)</span>;
+      }
+      return <span className="status-badge status-cancelled">Cancelled</span>;
+    }
+    return <span className="status-badge status-confirmed">Confirmed</span>;
+  };
+
   return (
     <div>
       <h2 className="page-title">Reports</h2>
-      <p className="page-sub">Generate booking and revenue reports by period.</p>
+      <p className="page-sub">Generate booking and revenue reports including refund data.</p>
 
       <div className="card report-card">
         <div className="form-field">
@@ -173,6 +188,7 @@ const AdminReports = ({
         )}
       </div>
 
+      {/* Only render stats if reportData exists */}
       {reportData && (
         <div style={{ marginTop: 24 }}>
           <div className="stats-row" style={{ marginBottom: 20 }}>
@@ -182,22 +198,58 @@ const AdminReports = ({
             </div>
             <div className="stat-box">
               <div className="stat-label">Confirmed</div>
-              <div className="stat-num">{reportData.confirmed || 0}</div>
-            </div>
-            <div className="stat-box">
-              <div className="stat-label">Pending</div>
-              <div className="stat-num">{reportData.pending || 0}</div>
+              <div className="stat-num" style={{ color: '#27ae60' }}>{reportData.confirmed || 0}</div>
             </div>
             <div className="stat-box">
               <div className="stat-label">Cancelled</div>
-              <div className="stat-num">{reportData.cancelled || 0}</div>
+              <div className="stat-num" style={{ color: '#e74c3c' }}>{reportData.cancelled || 0}</div>
             </div>
             <div className="stat-box">
-              <div className="stat-label">Revenue</div>
-              <div className="stat-num">Rs. {(reportData.revenue || 0).toLocaleString()}</div>
+              <div className="stat-label">Pending</div>
+              <div className="stat-num" style={{ color: '#f39c12' }}>{reportData.pending || 0}</div>
             </div>
           </div>
 
+          <div className="stats-row" style={{ marginBottom: 20 }}>
+            <div className="stat-box">
+              <div className="stat-label">Gross Revenue</div>
+              <div className="stat-num">Rs. {(reportData.revenue || 0).toLocaleString()}</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-label">Refunded Amount</div>
+              <div className="stat-num" style={{ color: '#e74c3c' }}>- Rs. {(reportData.refunded_amount || 0).toLocaleString()}</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-label">Net Revenue</div>
+              <div className="stat-num" style={{ color: '#27ae60' }}>
+                Rs. {((reportData.revenue || 0) - (reportData.refunded_amount || 0)).toLocaleString()}
+              </div>
+            </div>
+          </div>
+
+          <div className="stats-row" style={{ marginBottom: 20 }}>
+            <div className="stat-box">
+              <div className="stat-label">Pending Refunds</div>
+              <div className="stat-num" style={{ color: '#f39c12' }}>{reportData.pending_refunds || 0}</div>
+              <div className="stat-help">Awaiting processing</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-label">Failed Refunds</div>
+              <div className="stat-num" style={{ color: '#e74c3c' }}>{reportData.failed_refunds || 0}</div>
+              <div className="stat-help">Need manual intervention</div>
+            </div>
+            <div className="stat-box">
+              <div className="stat-label">Success Rate</div>
+              <div className="stat-num">
+                {reportData.cancelled > 0 
+                  ? Math.round(((reportData.cancelled - (reportData.failed_refunds || 0)) / reportData.cancelled) * 100) 
+                  : 100}%
+              </div>
+              <div className="stat-help">Refund success rate</div>
+            </div>
+          </div>
+
+          {/* Safe check for bookings array */}
           {reportData.bookings && reportData.bookings.length > 0 && (
             <div className="card">
               <div className="card-head">
@@ -213,23 +265,31 @@ const AdminReports = ({
                       <th>Slot Time</th>
                       <th>Status</th>
                       <th>Payment Status</th>
+                      <th>Refund Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportData.bookings.map((b) => (
-                      <tr key={b.id}>
+                      <tr key={b.id} className={b.status === 'cancelled' ? 'cancelled-booking' : ''}>
                         <td>{b.user_name || "N/A"}</td>
                         <td>{b.booking_date || "N/A"}</td>
                         <td>{b.slot_time || "N/A"}</td>
+                        <td>{getStatusBadge(b.status, b.refund_status)}</td>
                         <td>
-                          <span className={"status-badge status-" + (b.status || "unknown")}>
-                            {b.status || "N/A"}
+                          <span className={`status-badge status-${b.payment_status || "unknown"}`}>
+                            {b.payment_status === 'paid' ? '✓ Paid' : (b.payment_status || 'N/A')}
                           </span>
                         </td>
                         <td>
-                          <span className={"status-badge status-" + (b.payment_status || "unknown")}>
-                            {b.payment_status || "N/A"}
-                          </span>
+                          {b.status === 'cancelled' && b.refund_status === 'pending' && (
+                            <span className="refund-badge refund-pending">⏳ Refund Pending</span>
+                          )}
+                          {b.status === 'cancelled' && b.refund_status === 'completed' && (
+                            <span className="refund-badge refund-completed">✓ Refunded (Rs.{b.refund_amount})</span>
+                          )}
+                          {b.status === 'cancelled' && b.refund_status === 'failed' && (
+                            <span className="refund-badge refund-failed">⚠️ Refund Failed</span>
+                          )}
                         </td>
                       </tr>
                     ))}

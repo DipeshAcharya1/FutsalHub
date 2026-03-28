@@ -12,7 +12,6 @@ const AdminUsers = ({ users }) => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
               <th>Name</th>
               <th>Email</th>
               <th>Phone</th>
@@ -22,7 +21,6 @@ const AdminUsers = ({ users }) => {
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td>{u.id}</td>
                 <td>{u.name || "N/A"}</td>
                 <td>{u.email || "N/A"}</td>
                 <td>{u.phone || "N/A"}</td>

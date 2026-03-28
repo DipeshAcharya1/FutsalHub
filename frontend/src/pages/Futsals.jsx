@@ -237,7 +237,7 @@ const Futsals = () => {
                       <p className="futsal-description">{futsal.description}</p>
                       <div className="futsal-meta">
                         <span className="futsal-slots">
-                           {futsal.available_slots} slots available
+                           {futsal.available_slots}  slots 
                         </span>
                         <span className="futsal-price">
                            {futsal.price_from}

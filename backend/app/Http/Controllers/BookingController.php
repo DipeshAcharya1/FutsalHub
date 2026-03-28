@@ -6,107 +6,200 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\Booking;
 use App\Models\FutsalSlot;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
+use Illuminate\Support\Str;
 
 class BookingController extends Controller
 {
     /**
-     * Create a new booking - AUTOMATICALLY CONFIRMED
+     * Initiate booking - creates temporary pending booking before payment
+     * This is called when user clicks "Book Now" before Khalti payment
      */
-    public function store(Request $request): JsonResponse
+    public function initiateBooking(Request $request): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
+            $validated = $request->validate([
                 'futsal_slot_id' => 'required|exists:futsal_slots,id',
-                'booking_date' => 'required|date',
-                'payment_method' => 'required|in:esewa,khalti,online,cash',
-                'transaction_id' => 'nullable|string',
             ]);
 
-            if ($validator->fails()) {
-                return response()->json([ 
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
             $user = $request->user();
-            $slot = FutsalSlot::with(['futsal', 'timeSlot'])->find($request->futsal_slot_id);
+            $futsalSlot = FutsalSlot::with(['futsal', 'timeSlot'])
+                ->where('id', $validated['futsal_slot_id'])
+                ->where('is_available', true)
+                ->first();
 
-            // Check if slot exists
-            if (!$slot) {
+            if (!$futsalSlot) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Slot not found'
-                ], 404);
-            }
-
-            // Check if slot is available
-            if (!$slot->is_available) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This slot is no longer available'
+                    'message' => 'Slot is no longer available'
                 ], 400);
             }
 
-            // Get current date and time
-            $today = now()->toDateString();
-            $currentTime = now()->format('H:i:s');
-            
-            // Check if slot date is in the past
-            if ($slot->slot_date < $today) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot book past dates'
-                ], 400);
-            }
-            
-            // If slot is today, check if the time has already passed
-            if ($slot->slot_date === $today && $slot->timeSlot && $slot->timeSlot->start_time <= $currentTime) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot book a slot that has already started or passed'
-                ], 400);
-            }
-
-            // Check if user already has a booking for this slot
-            $existingBooking = Booking::where('futsal_slot_id', $slot->id)
-                ->where('user_id', $user->id)
-                ->where('status', 'confirmed')
+            // Check if slot is already booked
+            $existingBooking = Booking::where('futsal_slot_id', $futsalSlot->id)
+                ->whereIn('status', ['pending', 'confirmed'])
                 ->first();
 
             if ($existingBooking) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'You already have a booking for this slot'
+                    'message' => 'This slot is already booked'
                 ], 400);
             }
 
-            // Begin transaction
             DB::beginTransaction();
 
             try {
-                // Create booking - AUTOMATICALLY CONFIRMED (no pending status)
+                // Delete any expired pending bookings for this user
+                Booking::where('user_id', $user->id)
+                    ->where('status', 'pending')
+                    ->where('payment_expires_at', '<', Carbon::now())
+                    ->delete();
+
+                // Create pending booking (temporary hold)
                 $booking = Booking::create([
                     'user_id' => $user->id,
-                    'futsal_slot_id' => $slot->id,
-                    'booking_date' => $request->booking_date,
-                    'status' => 'confirmed', // Auto confirmed
-                    'payment_status' => 'paid',
+                    'futsal_slot_id' => $futsalSlot->id,
+                    'booking_date' => now(),
+                    'status' => 'pending',
+                    'payment_status' => 'pending',
+                    'refund_status' => 'none',
+                    'refund_amount' => 0,
+                    'payment_expires_at' => Carbon::now()->addMinutes(15),
+                    'booking_reference' => 'BK-' . strtoupper(Str::random(10))
                 ]);
 
-                // Mark slot as unavailable
-                $slot->is_available = false;
-                $slot->save();
+                // Temporarily mark slot as unavailable (15 minute hold)
+                $futsalSlot->is_available = false;
+                $futsalSlot->save();
 
-                // Create payment record
+                DB::commit();
+
+                Log::info('Booking initiated pending payment', [
+                    'booking_id' => $booking->id,
+                    'user_id' => $user->id,
+                    'slot_id' => $futsalSlot->id
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Booking initiated. Complete payment within 15 minutes.',
+                    'data' => [
+                        'booking_id' => $booking->id,
+                        'booking_reference' => $booking->booking_reference,
+                        'amount' => $futsalSlot->price,
+                        'futsal_name' => $futsalSlot->futsal->futsal_name,
+                        'slot_date' => $futsalSlot->slot_date,
+                        'start_time' => $futsalSlot->timeSlot->start_time,
+                        'end_time' => $futsalSlot->timeSlot->end_time,
+                        'payment_expires_at' => $booking->payment_expires_at
+                    ]
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Initiate booking error: ' . $e->getMessage(), [
+                    'user_id' => $user->id,
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Initiate booking failed: ' . $e->getMessage(), [
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initiate booking: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Confirm booking after successful payment
+     * Called by KhaltiController after payment verification
+     */
+    public function confirmBooking(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'booking_id' => 'required|exists:bookings,id',
+                'payment_data' => 'required|array',
+                'payment_data.transaction_id' => 'required|string',
+                'payment_data.amount' => 'required|numeric',
+                'payment_data.payment_method' => 'required|string'
+            ]);
+
+            $user = $request->user();
+            
+            $booking = Booking::with(['futsalSlot'])
+                ->where('id', $validated['booking_id'])
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$booking) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Booking not found'
+                ], 404);
+            }
+
+            // Check if booking is already confirmed
+            if ($booking->status === 'confirmed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Booking already confirmed'
+                ], 400);
+            }
+
+            // Check if booking is still pending
+            if ($booking->status !== 'pending') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Booking is not in pending state'
+                ], 400);
+            }
+
+            // Check if payment expired
+            if (Carbon::now() > $booking->payment_expires_at) {
+                // Release the slot
+                $booking->futsalSlot->is_available = true;
+                $booking->futsalSlot->save();
+                
+                $booking->delete();
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment window expired. Please book again.'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Update booking to confirmed
+                $booking->status = 'confirmed';
+                $booking->payment_status = 'completed';
+                $booking->payment_method = $validated['payment_data']['payment_method'];
+                $booking->transaction_id = $validated['payment_data']['transaction_id'];
+                $booking->save();
+
+                // Record payment
                 DB::table('payments')->insert([
                     'booking_id' => $booking->id,
-                    'amount' => $slot->price,
-                    'payment_method' => $request->payment_method,
-                    'transaction_id' => $request->transaction_id,
+                    'amount' => $validated['payment_data']['amount'],
+                    'payment_method' => $validated['payment_data']['payment_method'],
+                    'transaction_id' => $validated['payment_data']['transaction_id'],
+                    'status' => 'completed',
                     'payment_date' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -114,32 +207,54 @@ class BookingController extends Controller
 
                 DB::commit();
 
+                // Send confirmation email
+                $this->sendConfirmationEmail($booking);
+
+                Log::info('Booking confirmed after payment', [
+                    'booking_id' => $booking->id,
+                    'user_id' => $user->id,
+                    'transaction_id' => $validated['payment_data']['transaction_id']
+                ]);
+
                 return response()->json([
                     'success' => true,
-                    'message' => 'Booking confirmed successfully',
+                    'message' => 'Booking confirmed successfully!',
                     'data' => [
-                        'booking' => $booking,
-                        'futsal' => $slot->futsal,
-                        'slot' => $slot
+                        'booking_id' => $booking->id,
+                        'booking_reference' => $booking->booking_reference,
+                        'futsal_name' => $booking->futsalSlot->futsal->futsal_name,
+                        'slot_date' => $booking->futsalSlot->slot_date,
+                        'start_time' => $booking->futsalSlot->timeSlot->start_time,
+                        'end_time' => $booking->futsalSlot->timeSlot->end_time,
+                        'amount' => $booking->futsalSlot->price,
+                        'transaction_id' => $booking->transaction_id
                     ]
-                ], 201);
+                ]);
 
             } catch (\Exception $e) {
                 DB::rollBack();
+                Log::error('Confirm booking error: ' . $e->getMessage(), [
+                    'booking_id' => $booking->id,
+                    'trace' => $e->getTraceAsString()
+                ]);
                 throw $e;
             }
 
         } catch (\Exception $e) {
-            Log::error('Booking creation error: ' . $e->getMessage());
+            Log::error('Booking confirmation failed: ' . $e->getMessage(), [
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create booking'
+                'message' => 'Failed to confirm booking: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Get user's bookings
+     * Get user's bookings with cancellation eligibility and refund status
      */
     public function getUserBookings(Request $request): JsonResponse
     {
@@ -151,19 +266,35 @@ class BookingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function($booking) {
-                    // Check if slot time has passed
-                    $slotDateTime = $booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->end_time;
-                    $isPast = now() > $slotDateTime;
+                    $slotDateTime = Carbon::parse($booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->start_time);
+                    $now = Carbon::now();
+                    $isPast = $now > $slotDateTime;
+                    $isExpired = $booking->status === 'pending' && $now > $booking->payment_expires_at;
+                    $cancelDeadline = $slotDateTime->copy()->subHours(2);
+                    
+                    $canCancel = $booking->status === 'confirmed' 
+                        && !$isPast 
+                        && $now < $cancelDeadline;
                     
                     return [
                         'id' => $booking->id,
+                        'booking_reference' => $booking->booking_reference,
                         'booking_date' => $booking->booking_date,
                         'status' => $booking->status,
                         'payment_status' => $booking->payment_status,
+                        'refund_status' => $booking->refund_status ?? 'none',
+                        'refund_amount' => $booking->refund_amount ?? 0,
+                        'refunded_at' => $booking->refunded_at,
+                        'payment_expires_at' => $booking->payment_expires_at,
+                        'is_expired' => $isExpired,
+                        'can_cancel' => $canCancel,
+                        'cancel_deadline' => $cancelDeadline,
+                        'slot_start_time' => $slotDateTime,
                         'futsal_name' => $booking->futsalSlot->futsal->futsal_name ?? 'N/A',
                         'location' => $booking->futsalSlot->futsal->location ?? 'N/A',
                         'start_time' => $booking->futsalSlot->timeSlot->start_time ?? null,
                         'end_time' => $booking->futsalSlot->timeSlot->end_time ?? null,
+                        'slot_date' => $booking->futsalSlot->slot_date,
                         'price' => $booking->futsalSlot->price,
                         'is_past' => $isPast,
                         'created_at' => $booking->created_at,
@@ -176,10 +307,193 @@ class BookingController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get user bookings error: ' . $e->getMessage());
+            Log::error('Get user bookings error: ' . $e->getMessage(), [
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load bookings'
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel confirmed booking with refund
+     */
+    public function cancelBooking(Request $request, $id): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            
+            $booking = Booking::with(['futsalSlot.futsal', 'futsalSlot.timeSlot'])
+                ->where('id', $id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if (!$booking) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Booking not found'
+                ], 404);
+            }
+
+            // Check if booking is already cancelled
+            if ($booking->status === 'cancelled') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Booking is already cancelled'
+                ], 400);
+            }
+
+            // Check if refund already failed
+            if ($booking->refund_status === 'failed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Refund already failed. Please contact support for assistance.',
+                    'data' => ['need_manual_intervention' => true]
+                ], 400);
+            }
+
+            // Validate cancellation eligibility
+            $validationResult = $this->validateCancellation($booking);
+            if (!$validationResult['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validationResult['message']
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Update to refund pending status
+                $booking->refund_status = 'pending';
+                $booking->save();
+
+                // Process refund through Khalti
+                $refundResult = $this->processKhaltiRefund($booking);
+                
+                if ($refundResult['success']) {
+                    $booking->status = 'cancelled';
+                    $booking->refund_status = 'completed';
+                    $booking->refund_amount = $booking->futsalSlot->price;
+                    $booking->refunded_at = now();
+                    $booking->save();
+
+                    // Make slot available again
+                    $booking->futsalSlot->is_available = true;
+                    $booking->futsalSlot->save();
+
+                    DB::commit();
+
+                    // Send cancellation email
+                    $this->sendCancellationEmail($booking);
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => "Booking cancelled successfully. Refund of Rs. {$booking->refund_amount} will be processed to your original payment method within 5-7 business days.",
+                        'data' => [
+                            'booking_id' => $booking->id,
+                            'refund_amount' => $booking->refund_amount,
+                            'refund_status' => $booking->refund_status
+                        ]
+                    ]);
+                } else {
+                    // Refund failed
+                    $booking->refund_status = 'failed';
+                    $booking->save();
+                    DB::commit();
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Refund processing failed: ' . ($refundResult['message'] ?? 'Unknown error')
+                    ], 500);
+                }
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Cancel booking transaction error: ' . $e->getMessage(), [
+                    'booking_id' => $booking->id,
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Cancel booking error: ' . $e->getMessage(), [
+                'booking_id' => $id,
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel booking: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel pending booking (before payment)
+     */
+    public function cancelPendingBooking(Request $request, $id): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            
+            $booking = Booking::with('futsalSlot')
+                ->where('id', $id)
+                ->where('user_id', $user->id)
+                ->where('status', 'pending')
+                ->first();
+
+            if (!$booking) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pending booking not found'
+                ], 404);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Make slot available again
+                if ($booking->futsalSlot) {
+                    $booking->futsalSlot->is_available = true;
+                    $booking->futsalSlot->save();
+                }
+                
+                // Delete the pending booking
+                $booking->delete();
+                
+                DB::commit();
+
+                Log::info('Pending booking cancelled', [
+                    'booking_id' => $booking->id,
+                    'user_id' => $user->id
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Booking cancelled successfully'
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Cancel pending booking error: ' . $e->getMessage(), [
+                'booking_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel booking'
             ], 500);
         }
     }
@@ -204,24 +518,41 @@ class BookingController extends Controller
                 ], 404);
             }
 
+            $slotDateTime = Carbon::parse($booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->start_time);
+            $now = Carbon::now();
+            $cancelDeadline = $slotDateTime->copy()->subHours(2);
+            
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $booking->id,
+                    'booking_reference' => $booking->booking_reference,
                     'booking_date' => $booking->booking_date,
                     'status' => $booking->status,
                     'payment_status' => $booking->payment_status,
+                    'refund_status' => $booking->refund_status,
+                    'refund_amount' => $booking->refund_amount,
+                    'refunded_at' => $booking->refunded_at,
+                    'payment_expires_at' => $booking->payment_expires_at,
                     'futsal_name' => $booking->futsalSlot->futsal->futsal_name ?? 'N/A',
                     'location' => $booking->futsalSlot->futsal->location ?? 'N/A',
                     'start_time' => $booking->futsalSlot->timeSlot->start_time ?? null,
                     'end_time' => $booking->futsalSlot->timeSlot->end_time ?? null,
+                    'slot_date' => $booking->futsalSlot->slot_date,
                     'price' => $booking->futsalSlot->price,
+                    'can_cancel' => $booking->status === 'confirmed' && $now < $cancelDeadline,
+                    'cancel_deadline' => $cancelDeadline,
                     'created_at' => $booking->created_at,
                 ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Get booking details error: ' . $e->getMessage());
+            Log::error('Get booking details error: ' . $e->getMessage(), [
+                'booking_id' => $id,
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load booking details'
@@ -230,72 +561,327 @@ class BookingController extends Controller
     }
 
     /**
-     * Cancel booking - Only for future bookings
+     * Get payment history for user
      */
-    public function cancel(Request $request, $id): JsonResponse
+    public function getPaymentHistory(Request $request): JsonResponse
     {
         try {
             $user = $request->user();
             
-            $booking = Booking::with('futsalSlot.timeSlot')
-                ->where('id', $id)
-                ->where('user_id', $user->id)
-                ->first();
+            $payments = DB::table('payments')
+                ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->where('bookings.user_id', $user->id)
+                ->select(
+                    'payments.id',
+                    'payments.amount',
+                    'payments.payment_method',
+                    'payments.transaction_id',
+                    'payments.payment_date',
+                    'payments.status as payment_status',
+                    'bookings.id as booking_id',
+                    'bookings.booking_reference',
+                    'bookings.booking_date',
+                    'bookings.status as booking_status',
+                    'bookings.refund_status',
+                    'bookings.refund_amount',
+                    'bookings.refunded_at',
+                    'futsals.futsal_name',
+                    'time_slots.start_time',
+                    'time_slots.end_time',
+                    'futsal_slots.slot_date'
+                )
+                ->orderBy('payments.payment_date', 'desc')
+                ->paginate(20);
 
-            if (!$booking) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Booking not found'
-                ], 404);
-            }
-
-            if ($booking->status !== 'confirmed') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only confirmed bookings can be cancelled'
-                ], 400);
-            }
-
-            // Check if slot time has already passed
-            $slotDateTime = $booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->end_time;
-            if (now() > $slotDateTime) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot cancel past bookings'
-                ], 400);
-            }
-
-            DB::beginTransaction();
-
-            try {
-                // Update booking status
-                $booking->status = 'cancelled';
-                $booking->save();
-
-                // Make slot available again
-                if ($booking->futsalSlot) {
-                    $booking->futsalSlot->is_available = true;
-                    $booking->futsalSlot->save();
-                }
-
-                DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Booking cancelled successfully'
-                ]);
-
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
+            return response()->json([
+                'success' => true,
+                'data' => $payments
+            ]);
 
         } catch (\Exception $e) {
-            Log::error('Cancel booking error: ' . $e->getMessage());
+            Log::error('Get payment history error: ' . $e->getMessage(), [
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to cancel booking'
+                'message' => 'Failed to load payment history'
             ], 500);
+        }
+    }
+
+    /**
+     * Validate if booking can be cancelled
+     */
+    private function validateCancellation($booking): array
+    {
+        if ($booking->status !== 'confirmed') {
+            return [
+                'valid' => false,
+                'message' => 'Only confirmed bookings can be cancelled'
+            ];
+        }
+
+        if ($booking->refund_status === 'completed') {
+            return [
+                'valid' => false,
+                'message' => 'Booking already cancelled and refunded'
+            ];
+        }
+
+        $slotDate = $booking->futsalSlot->slot_date;
+        $slotStartTime = $booking->futsalSlot->timeSlot->start_time;
+        $slotDateTime = Carbon::parse($slotDate . ' ' . $slotStartTime);
+        $now = Carbon::now();
+
+        if ($now > $slotDateTime) {
+            return [
+                'valid' => false,
+                'message' => 'Cannot cancel past bookings'
+            ];
+        }
+
+        $cancelDeadline = $slotDateTime->copy()->subHours(2);
+        
+        if ($now > $cancelDeadline) {
+            $remainingMinutes = $slotDateTime->diffInMinutes($now);
+            $hoursLeft = floor($remainingMinutes / 60);
+            $minutesLeft = $remainingMinutes % 60;
+            
+            return [
+                'valid' => false,
+                'message' => "Cannot cancel booking less than 2 hours before slot time. Only {$hoursLeft} hours and {$minutesLeft} minutes remaining."
+            ];
+        }
+
+        return ['valid' => true];
+    }
+
+    /**
+     * Process refund through Khalti API
+     */
+    private function processKhaltiRefund($booking): array
+    {
+        try {
+            $payment = DB::table('payments')
+                ->where('booking_id', $booking->id)
+                ->where('status', 'completed')
+                ->first();
+            
+            if (!$payment) {
+                Log::error('Payment not found for refund', ['booking_id' => $booking->id]);
+                return [
+                    'success' => false,
+                    'message' => 'Payment record not found'
+                ];
+            }
+
+            // For development/testing - simulate successful refund
+            if (env('APP_ENV') === 'local' || !env('KHALTI_SECRET_KEY')) {
+                Log::info('Simulating refund for development', ['booking_id' => $booking->id]);
+                
+                DB::table('refunds')->insert([
+                    'booking_id' => $booking->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $payment->amount,
+                    'transaction_id' => 'SIM_REFUND_' . Str::random(10),
+                    'status' => 'completed',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                
+                return ['success' => true];
+            }
+
+            $refundUrl = env('KHALTI_BASE_URL') . '/epayment/refund/';
+            
+            $payload = [
+                'pidx' => $payment->transaction_id,
+                'amount' => (int)($payment->amount * 100),
+                'reason' => 'User requested cancellation'
+            ];
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->post($refundUrl, $payload);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                
+                DB::table('refunds')->insert([
+                    'booking_id' => $booking->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $payment->amount,
+                    'transaction_id' => $data['refund_id'] ?? null,
+                    'status' => 'completed',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                
+                Log::info('Refund processed successfully', [
+                    'booking_id' => $booking->id,
+                    'amount' => $payment->amount
+                ]);
+                
+                return ['success' => true];
+            } else {
+                $errorData = $response->json();
+                $errorMessage = $errorData['message'] ?? 'Khalti refund API error';
+                
+                Log::error('Khalti refund failed', [
+                    'booking_id' => $booking->id,
+                    'response' => $response->body()
+                ]);
+                
+                return [
+                    'success' => false,
+                    'message' => $errorMessage
+                ];
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Refund processing error: ' . $e->getMessage(), [
+                'booking_id' => $booking->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Send booking confirmation email
+     */
+    private function sendConfirmationEmail($booking): void
+    {
+        try {
+            $user = User::find($booking->user_id);
+            if (!$user) return;
+
+            $slot = $booking->futsalSlot;
+            $timeSlot = $slot->timeSlot;
+            $futsal = $slot->futsal;
+
+            $html = "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Booking Confirmed - FutsalHub</title>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+                    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                    .header { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%); color: white; padding: 30px; text-align: center; }
+                    .header h1 { margin: 0; font-size: 24px; }
+                    .content { padding: 30px; }
+                    .booking-details { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; }
+                    .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0e0e0; }
+                    .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'><h1>Booking Confirmed</h1><p>Your booking is confirmed</p></div>
+                    <div class='content'>
+                        <h2>Hello " . ($user->name ?? 'User') . ",</h2>
+                        <p>Your booking has been confirmed successfully.</p>
+                        <div class='booking-details'>
+                            <h3>Booking Details</h3>
+                            <div class='detail-row'><span>Booking Reference:</span><strong>" . ($booking->booking_reference ?? 'N/A') . "</strong></div>
+                            <div class='detail-row'><span>Futsal:</span><strong>" . ($futsal->futsal_name ?? 'N/A') . "</strong></div>
+                            <div class='detail-row'><span>Date:</span><strong>" . Carbon::parse($slot->slot_date ?? now())->format('d M Y') . "</strong></div>
+                            <div class='detail-row'><span>Time:</span><strong>" . ($timeSlot->start_time ?? 'N/A') . " - " . ($timeSlot->end_time ?? 'N/A') . "</strong></div>
+                            <div class='detail-row'><span>Amount Paid:</span><strong>Rs. " . ($slot->price ?? '0') . "</strong></div>
+                            <div class='detail-row'><span>Transaction ID:</span><strong>" . ($booking->transaction_id ?? 'N/A') . "</strong></div>
+                        </div>
+                        <p>Please arrive on time for your booking.</p>
+                        <p>Cancellation Policy: Free cancellation up to 2 hours before the slot time.</p>
+                    </div>
+                    <div class='footer'><p>FutsalHub - Easy Futsal Booking</p></div>
+                </div>
+            </body>
+            </html>
+            ";
+
+            Mail::html($html, function ($message) use ($user) {
+                $message->to($user->email, $user->name)
+                        ->subject('Booking Confirmed - FutsalHub');
+            });
+            
+            Log::info('Confirmation email sent', ['booking_id' => $booking->id]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to send confirmation email: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send cancellation confirmation email
+     */
+    private function sendCancellationEmail($booking): void
+    {
+        try {
+            $user = User::find($booking->user_id);
+            if (!$user) return;
+
+            $slot = $booking->futsalSlot;
+            $timeSlot = $slot->timeSlot;
+            $futsal = $slot->futsal;
+
+            $html = "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Booking Cancelled - FutsalHub</title>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+                    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                    .header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 30px; text-align: center; }
+                    .header h1 { margin: 0; font-size: 24px; }
+                    .content { padding: 30px; }
+                    .booking-details { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; }
+                    .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0e0e0; }
+                    .refund-amount { font-size: 20px; font-weight: 700; color: #27ae60; }
+                    .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'><h1>Booking Cancelled</h1><p>Your booking has been cancelled</p></div>
+                    <div class='content'>
+                        <h2>Hello " . ($user->name ?? 'User') . ",</h2>
+                        <p>Your booking has been successfully cancelled.</p>
+                        <div class='booking-details'>
+                            <h3>Cancelled Booking Details</h3>
+                            <div class='detail-row'><span>Futsal:</span><strong>" . ($futsal->futsal_name ?? 'N/A') . "</strong></div>
+                            <div class='detail-row'><span>Date:</span><strong>" . Carbon::parse($slot->slot_date ?? now())->format('d M Y') . "</strong></div>
+                            <div class='detail-row'><span>Time:</span><strong>" . ($timeSlot->start_time ?? 'N/A') . " - " . ($timeSlot->end_time ?? 'N/A') . "</strong></div>
+                            <div class='detail-row'><span>Refund Amount:</span><strong class='refund-amount'>Rs. " . ($booking->refund_amount ?? '0') . "</strong></div>
+                        </div>
+                        <p>The refund will be credited to your original payment method within 5-7 business days.</p>
+                    </div>
+                    <div class='footer'><p>FutsalHub - Easy Futsal Booking</p></div>
+                </div>
+            </body>
+            </html>
+            ";
+
+            Mail::html($html, function ($message) use ($user) {
+                $message->to($user->email, $user->name)
+                        ->subject('Booking Cancelled - FutsalHub');
+            });
+            
+            Log::info('Cancellation email sent', ['booking_id' => $booking->id]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to send cancellation email: ' . $e->getMessage());
         }
     }
 }

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onDeleteSlot, bookings }) => {
+const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggleSlot, onDeleteSlot, bookings, onOpenSettings, onOpenGenerate }) => {
   const [showExpired, setShowExpired] = useState(false);
   
   const handleToggle = async (slot) => {
@@ -39,10 +39,18 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
 
   const today = new Date().toISOString().split('T')[0];
   
-  // Filter slots based on showExpired toggle
   const filteredSlots = showExpired 
     ? slots 
     : slots.filter(slot => slot.slot_date >= today);
+
+  const getSlotsPreview = () => {
+    if (!settings) return 0;
+    const start = settings.open_time.split(':').map(Number);
+    const end = settings.close_time.split(':').map(Number);
+    const totalMinutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
+    const slotCycle = settings.slot_duration + settings.break_time;
+    return Math.floor(totalMinutes / slotCycle);
+  };
 
   return (
     <div>
@@ -54,19 +62,41 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
             {!canModify && <span style={{ color: '#856404', display: 'block', marginTop: '5px' }}>View only - modifications disabled</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {canModify && (
+            <>
+              <button className="btn btn-secondary" onClick={onOpenSettings}>
+                 Settings
+              </button>
+              <button className="btn btn-success" onClick={onOpenGenerate}>
+                 Bulk Generate
+              </button>
+              <button className="btn btn-primary" onClick={onAddSlot}>
+                + Add Single Slot
+              </button>
+            </>
+          )}
           <button 
             className={`btn ${showExpired ? 'btn-secondary' : 'btn-primary'}`}
             onClick={() => setShowExpired(!showExpired)}
             style={{ fontSize: '14px' }}
           >
-            {showExpired ? "Hide Expired Slots" : "Show Expired Slots"}
+            {showExpired ? "Hide Expired" : "Show Expired"}
           </button>
-          {canModify && (
-            <button className="btn btn-primary" onClick={onAddSlot}>Add New Slot</button>
-          )}
         </div>
       </div>
+
+      {settings && (
+        <div className="info-card">
+          <div className="info-grid">
+            <div><strong>Hours:</strong> {settings.open_time} - {settings.close_time}</div>
+            <div><strong>Slot:</strong> {settings.slot_duration} min</div>
+            <div><strong>Break:</strong> {settings.break_time} min</div>
+            <div><strong>Price:</strong> Rs. {settings.default_price}</div>
+            <div><strong>Slots/Day:</strong> {getSlotsPreview()}</div>
+          </div>
+        </div>
+      )}
 
       {showExpired && (
         <div className="info-message" style={{ 
@@ -86,21 +116,19 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Time Slot</th>
                 <th>Date</th>
                 <th>Price (Rs.)</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>  
-              </thead>
+               </thead>
             <tbody>
               {filteredSlots.length > 0 ? (
                 filteredSlots.map(slot => {
                   const available = isAvailable(slot);
                   const expired = isExpired(slot);
                   const bookingStatus = getSlotBookingStatus(slot.id);
-                  
                   const isEditable = !bookingStatus && !expired;
                   
                   let statusText = 'Available';
@@ -119,7 +147,6 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
                   
                   return (
                     <tr key={slot.id} className={bookingStatus ? 'booked-slot' : expired ? 'expired-slot' : ''}>
-                      <td>{slot.id}</td>
                       <td><strong>{slot.start_time} - {slot.end_time}</strong></td>
                       <td>{slot.slot_date}</td>
                       <td>Rs. {slot.price}</td>
@@ -127,28 +154,28 @@ const AdminSlots = ({ slots, canModify, onAddSlot, onEditSlot, onToggleSlot, onD
                         <span className={`status-badge ${statusClass}`}>
                           {statusText}
                         </span>
-                      </td>
+                       </td>
                       <td>
                         {canModify && !expired && !bookingStatus && (
                           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                             <button className="action-btn" onClick={() => onEditSlot(slot)}>Edit</button>
                             <button className="action-btn" onClick={() => handleToggle(slot)}>
-                              {available ? "Mark Unavailable" : "Mark Available"}
+                              {available ? "Disable" : "Enable"}
                             </button>
                             <button className="action-btn action-btn-danger" onClick={() => onDeleteSlot(slot)}>Delete</button>
                           </div>
                         )}
-                        {expired && <span className="small-text" style={{ color: '#6c757d' }}>Expired - No actions</span>}
-                        {bookingStatus && !expired && <span className="small-text" style={{ color: '#0c5460' }}>Booked - Cannot modify</span>}
+                        {expired && <span className="small-text">Expired - No actions</span>}
+                        {bookingStatus && !expired && <span className="small-text">Booked - Cannot modify</span>}
                         {!canModify && <span className="small-text">No actions</span>}
-                      </td>
+                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
                   <td colSpan={6} className="empty-row">
-                    {showExpired ? "No slots found." : "No future slots found. Click Add New Slot to create one."}
+                    {showExpired ? "No slots found." : "No future slots found. Configure settings and click Bulk Generate to create slots."}
                   </td>
                 </tr>
               )}

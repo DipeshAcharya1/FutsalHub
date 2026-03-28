@@ -10,6 +10,8 @@ import AdminUsers from "./AdminUsers";
 import AdminReports from "./AdminReports";
 import EditFutsalModal from "./EditFutsalModal";
 import SlotModal from "./SlotModal";
+import SettingsModal from "./SettingsModal";
+import GenerateModal from "./GenerateModal";
 import { generateReportPDF } from "../../utils/pdfGenerator";
 import "../../styles/AdminDashboard.css";
 
@@ -36,12 +38,15 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [reportData, setReportData] = useState(null);
   const [timeSlots, setTimeSlots] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [availableStartTimes, setAvailableStartTimes] = useState([]);
   const [availableEndTimes, setAvailableEndTimes] = useState([]);
 
   // Modal states
   const [editingFutsal, setEditingFutsal] = useState(false);
   const [showSlotModal, setShowSlotModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [editingSlot, setEditingSlot] = useState(null);
 
   // Futsal form states
@@ -70,26 +75,24 @@ const AdminDashboard = () => {
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [bookingFilter, setBookingFilter] = useState("all");
 
-  // Show success message
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Load futsal info
   useEffect(() => {
     if (!futsalId) {
       setError("Futsal ID is missing from the URL.");
       return;
     }
     loadFutsalInfo();
+    loadSettings();
     loadSlots();
     loadBookings();
     loadTimeSlots();
     loadReport();
   }, [futsalId]);
 
-  // Load tab specific data
   useEffect(() => {
     if (tab === "payments") loadPayments();
     if (tab === "users") loadUsers();
@@ -111,6 +114,59 @@ const AdminDashboard = () => {
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const res = await api.get("/admin/futsals/" + futsalId + "/settings");
+      setSettings(res.data);
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    }
+  };
+
+  const saveSettings = async (newSettings) => {
+    setLoading(true);
+    try {
+      await api.post("/admin/futsals/" + futsalId + "/settings", newSettings);
+      setSettings(newSettings);
+      showSuccess("Settings saved successfully");
+      setShowSettingsModal(false);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to save settings");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateSlots = async (date, price, isBulk, startDate, endDate, daysOfWeek) => {
+    setLoading(true);
+    try {
+      let response;
+      if (isBulk) {
+        response = await api.post("/admin/futsals/" + futsalId + "/bulk-generate-slots", {
+          start_date: startDate,
+          end_date: endDate,
+          price: price,
+          days_of_week: daysOfWeek
+        });
+      } else {
+        response = await api.post("/admin/futsals/" + futsalId + "/generate-slots", {
+          slot_date: date,
+          price: price
+        });
+      }
+      
+      if (response.data.success) {
+        showSuccess(response.data.message);
+        await loadSlots();
+        setShowGenerateModal(false);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to generate slots");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadTimeSlots = async () => {
     try {
       const res = await api.get("/time-slots");
@@ -129,11 +185,8 @@ const AdminDashboard = () => {
     setSlotLoading(true);
     try {
       const res = await api.get("/admin/futsals/" + futsalId + "/courts");
-      console.log("loadSlots response:", res.data);
       
       let slotsData = [];
-      let availableCount = 0;
-      
       if (res.data) {
         if (res.data.slots !== undefined) {
           slotsData = res.data.slots;
@@ -141,22 +194,11 @@ const AdminDashboard = () => {
             setFutsalActive(res.data.futsal_active);
             setCanModify(res.data.can_modify);
           }
-          // Get the available slots count from response
-          availableCount = res.data.available_slots_count || 0;
         } else if (Array.isArray(res.data)) {
           slotsData = res.data;
-          // Calculate available slots (future dates only)
-          const today = new Date().toISOString().split('T')[0];
-          availableCount = slotsData.filter(slot => 
-            slot.is_available && slot.slot_date >= today
-          ).length;
         }
       }
-      
       setSlots(slotsData);
-      console.log("Slots set to:", slotsData);
-      console.log("Available slots count:", availableCount);
-      
     } catch (err) {
       console.error("Failed to load slots:", err);
       setError("Failed to load slots.");
@@ -228,13 +270,7 @@ const AdminDashboard = () => {
 
   const handleDownloadPDF = (period, date) => {
     if (!reportData || !futsalInfo) return;
-    
-    generateReportPDF(
-      reportData, 
-      period, 
-      date, 
-      futsalInfo.futsal_name
-    );
+    generateReportPDF(reportData, period, date, futsalInfo.futsal_name);
   };
 
   const updateBookingStatus = async (bookingId, status) => {
@@ -259,21 +295,16 @@ const AdminDashboard = () => {
     try {
       setSlots(prevSlots => 
         prevSlots.map(s => 
-          s.id === slot.id 
-            ? { ...s, is_available: !s.is_available } 
-            : s
+          s.id === slot.id ? { ...s, is_available: !s.is_available } : s
         )
       );
       
       await api.patch(`/admin/futsals/${futsalId}/courts/${slot.id}/toggle-active`);
       showSuccess(`Slot marked as ${slot.is_available ? 'unavailable' : 'available'}`);
-      
     } catch (err) {
       setSlots(prevSlots => 
         prevSlots.map(s => 
-          s.id === slot.id 
-            ? { ...s, is_available: slot.is_available } 
-            : s
+          s.id === slot.id ? { ...s, is_available: slot.is_available } : s
         )
       );
       
@@ -460,16 +491,13 @@ const AdminDashboard = () => {
     }
   };
 
-  // Derived counts
   const pendingCount = bookings.filter(b => b.status === "pending").length;
   const confirmedCount = bookings.filter(b => b.status === "confirmed").length;
   const todayDate = new Date().toISOString().slice(0, 10);
   const todayBookings = bookings.filter(b => b.booking_date === todayDate).length;
   const totalRevenue = payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
   const today = new Date().toISOString().split('T')[0];
-  const availableSlots = slots.filter(s => {
-  return s.is_available && s.slot_date >= today;
-  }).length;
+  const availableSlots = slots.filter(s => s.is_available && s.slot_date >= today).length;
   const filteredBookings = bookingFilter === "all" ? bookings : bookings.filter(b => b.status === bookingFilter);
 
   return (
@@ -508,17 +536,20 @@ const AdminDashboard = () => {
             confirmedCount={confirmedCount}
             todayBookings={todayBookings}
             availableSlots={availableSlots}
+            settings={settings}
             onEditFutsal={openEditFutsal}
+            onOpenSettings={() => setShowSettingsModal(true)}
+            onOpenGenerate={() => setShowGenerateModal(true)}
             setTab={setTab}
           />
         )}
 
-
         {tab === "slots" && (
           <AdminSlots
             slots={slots}
-            bookings={bookings}  // Pass bookings to check which slots are booked
+            bookings={bookings}
             canModify={canModify}
+            settings={settings}
             loading={slotLoading}
             onAddSlot={() => {
               setEditingSlot(null);
@@ -540,6 +571,8 @@ const AdminDashboard = () => {
             }}
             onToggleSlot={toggleSlot}
             onDeleteSlot={deleteSlot}
+            onOpenSettings={() => setShowSettingsModal(true)}
+            onOpenGenerate={() => setShowGenerateModal(true)}
           />
         )}
 
@@ -554,15 +587,10 @@ const AdminDashboard = () => {
         )}
 
         {tab === "payments" && (
-          <AdminPayments
-            payments={payments}
-            totalRevenue={totalRevenue}
-          />
+          <AdminPayments payments={payments} totalRevenue={totalRevenue} />
         )}
 
-        {tab === "users" && (
-          <AdminUsers users={users} />
-        )}
+        {tab === "users" && <AdminUsers users={users} />}
 
         {tab === "reports" && (
           <AdminReports
@@ -602,6 +630,24 @@ const AdminDashboard = () => {
           editingSlot={editingSlot}
           onSubmit={saveSlot}
           onClose={() => setShowSlotModal(false)}
+          loading={loading}
+        />
+      )}
+
+      {showSettingsModal && (
+        <SettingsModal
+          settings={settings}
+          onSave={saveSettings}
+          onClose={() => setShowSettingsModal(false)}
+          loading={loading}
+        />
+      )}
+
+      {showGenerateModal && (
+        <GenerateModal
+          settings={settings}
+          onGenerate={generateSlots}
+          onClose={() => setShowGenerateModal(false)}
           loading={loading}
         />
       )}

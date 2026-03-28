@@ -16,6 +16,7 @@ const FutsalDetails = () => {
   const [availableDates, setAvailableDates] = useState([]);
   const [slotsByDate, setSlotsByDate] = useState([]);
   const [imageError, setImageError] = useState(false);
+  const [bookingSlotId, setBookingSlotId] = useState(null);
 
   useEffect(() => {
     fetchFutsalDetails();
@@ -42,29 +43,45 @@ const FutsalDetails = () => {
     }
   };
 
-  const handleSelectSlot = (slot, date) => {
-    // Check if slot is valid (not past time for today)
+  // DIRECT PAYMENT - No booking created
+  const handleBookSlot = async (slot, date) => {
     if (!isSlotValid(slot, date)) {
       alert("This slot has already passed and cannot be booked.");
       return;
     }
     
-    // Navigate to booking confirmation with selected slot data
-    navigate(`/futsal/${id}/confirm-booking`, {
-      state: {
-        futsal,
-        slot,
-        date,
-        slotsByDate,
-        availableDates
+    if (!slot.is_available) {
+      alert("This slot is no longer available.");
+      return;
+    }
+    
+    setBookingSlotId(slot.id);
+    
+    try {
+      const response = await api.post('/khalti/initiate', {
+        slot_id: slot.id,
+        amount: slot.price,
+        futsal_id: futsal.id,
+        booking_date: date
+      });
+
+      if (response.data.success) {
+        // Redirect to Khalti payment page
+        window.location.href = response.data.payment_url;
+      } else {
+        alert(response.data.message || 'Payment initiation failed');
       }
-    });
+    } catch (error) {
+      console.error('Payment initiation error:', error);
+      alert(error.response?.data?.message || 'Failed to initiate payment');
+    } finally {
+      setBookingSlotId(null);
+    }
   };
 
-  // Helper function to check if slot is valid (not past time for today)
   const isSlotValid = (slot, date) => {
     const today = new Date().toISOString().split('T')[0];
-    if (date !== today) return true; // Future dates are always valid
+    if (date !== today) return true;
     
     const currentTime = new Date();
     const currentHours = currentTime.getHours();
@@ -127,10 +144,11 @@ const FutsalDetails = () => {
             <SlotSelector 
               availableDates={availableDates}
               slotsByDate={slotsByDate}
-              onSelectSlot={handleSelectSlot}
+              onBookSlot={handleBookSlot}
               formatDate={formatDate}
               formatTime={formatTime}
               isSlotValid={isSlotValid}
+              bookingSlotId={bookingSlotId}
             />
           ) : (
             <p className="no-slots">No available slots at the moment.</p>
@@ -142,7 +160,6 @@ const FutsalDetails = () => {
   );
 };
 
-// Helper functions
 const formatTime = (time) => {
   if (!time) return "";
   const [hours, minutes] = time.split(':');
@@ -157,8 +174,7 @@ const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
 
-// SlotSelector Component with time validation
-const SlotSelector = ({ availableDates, slotsByDate, onSelectSlot, formatDate, formatTime, isSlotValid }) => {
+const SlotSelector = ({ availableDates, slotsByDate, onBookSlot, formatDate, formatTime, isSlotValid, bookingSlotId }) => {
   const [selectedDate, setSelectedDate] = useState(availableDates[0]);
   const [availableSlots, setAvailableSlots] = useState(
     slotsByDate.find(item => item.date === availableDates[0])?.slots || []
@@ -171,14 +187,6 @@ const SlotSelector = ({ availableDates, slotsByDate, onSelectSlot, formatDate, f
       setAvailableSlots(dateGroup.slots);
     }
   };
-
-  // Filter out past slots for today
-  const getValidSlots = () => {
-    return availableSlots.filter(slot => isSlotValid(slot, selectedDate));
-  };
-
-  const validSlots = getValidSlots();
-  const hasValidSlots = validSlots.length > 0;
 
   return (
     <>
@@ -200,35 +208,41 @@ const SlotSelector = ({ availableDates, slotsByDate, onSelectSlot, formatDate, f
       <div className="slots-container">
         <h3>Available Slots for {formatDate(selectedDate)}</h3>
         {availableSlots.length > 0 ? (
-          hasValidSlots ? (
-            <div className="slots-grid">
-              {availableSlots.map(slot => {
-                const isValid = isSlotValid(slot, selectedDate);
-                return (
-                  <div 
-                    key={slot.id} 
-                    className={`slot-card ${!isValid ? 'slot-expired' : ''}`}
-                    onClick={() => isValid && onSelectSlot(slot, selectedDate)}
-                    style={!isValid ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                  >
-                    <div className="slot-time">
-                      {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
-                    </div>
-                    <div className="slot-price">{slot.formatted_price}</div>
-                    {isValid ? (
-                      <button className="select-slot-btn">Select</button>
-                    ) : (
-                      <button className="select-slot-btn" disabled style={{ background: '#95a5a6' }}>
-                        Expired
-                      </button>
-                    )}
+          <div className="slots-grid">
+            {availableSlots.map(slot => {
+              const isValid = isSlotValid(slot, selectedDate);
+              const isBookingThisSlot = bookingSlotId === slot.id;
+              
+              return (
+                <div 
+                  key={slot.id} 
+                  className={`slot-card ${!slot.is_available ? 'slot-unavailable' : ''} ${!isValid ? 'slot-expired' : ''}`}
+                  onClick={() => isValid && slot.is_available && onBookSlot(slot, selectedDate)}
+                >
+                  <div className="slot-time">
+                    {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="no-slots">No available slots for this time.</p>
-          )
+                  <div className="slot-price">{slot.formatted_price}</div>
+                  {!slot.is_available ? (
+                    <button className="select-slot-btn disabled" disabled>
+                      Booked
+                    </button>
+                  ) : !isValid ? (
+                    <button className="select-slot-btn disabled" disabled>
+                      Expired
+                    </button>
+                  ) : (
+                    <button 
+                      className="select-slot-btn" 
+                      disabled={isBookingThisSlot}
+                    >
+                      {isBookingThisSlot ? "Processing..." : "Book Now"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <p className="no-slots">No available slots for this date.</p>
         )}

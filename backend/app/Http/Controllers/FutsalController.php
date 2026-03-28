@@ -63,25 +63,28 @@ class FutsalController extends Controller
 
             // Transform the data
             $transformed = $futsals->through(function($futsal) {
-                // OPTION 1: Show only future slots (recommended for production)
                 $today = now()->toDateString();
+                $currentTime = now()->format('H:i:s');
+                
+                // Count only future available slots (not expired)
                 $availableSlots = FutsalSlot::where('futsal_id', $futsal->id)
                     ->where('is_available', true)
                     ->where('slot_date', '>=', $today)
+                    ->where(function($query) use ($today, $currentTime) {
+                        $query->where('slot_date', '>', $today)
+                              ->orWhere(function($q) use ($today, $currentTime) {
+                                  $q->where('slot_date', '=', $today)
+                                    ->whereHas('timeSlot', function($timeQ) use ($currentTime) {
+                                        $timeQ->where('start_time', '>', $currentTime);
+                                    });
+                              });
+                    })
                     ->count();
+                    
                 $minPrice = FutsalSlot::where('futsal_id', $futsal->id)
                     ->where('is_available', true)
                     ->where('slot_date', '>=', $today)
                     ->min('price');
-
-                // OPTION 2: Show ALL slots (including past - for testing/development)
-                // $availableSlots = FutsalSlot::where('futsal_id', $futsal->id)
-                //     ->where('is_available', true)
-                //     ->count();
-                    
-                // $minPrice = FutsalSlot::where('futsal_id', $futsal->id)
-                //     ->where('is_available', true)
-                //     ->min('price');
 
                 // Ensure image URL is full URL
                 $imageUrl = $futsal->image;
@@ -170,30 +173,27 @@ class FutsalController extends Controller
                 ], 404);
             }
 
-            // OPTION 1: Show only future slots (recommended for production)
             $today = now()->toDateString();
-            Log::info('Today is: ' . $today);
+            $currentTime = now()->format('H:i:s');
             
+            // Get all slots that are available and not expired
             $availableSlots = FutsalSlot::with('timeSlot')
                 ->where('futsal_id', $id)
                 ->where('is_available', true)
                 ->where('slot_date', '>=', $today)
+                ->where(function($query) use ($today, $currentTime) {
+                    $query->where('slot_date', '>', $today)
+                        ->orWhere(function($q) use ($today, $currentTime) {
+                            $q->where('slot_date', '=', $today)
+                                ->whereHas('timeSlot', function($timeQ) use ($currentTime) {
+                                    $timeQ->where('start_time', '>', $currentTime);
+                                });
+                        });
+                })
                 ->orderBy('slot_date')
                 ->get();
 
-            // OPTION 2: Show ALL slots (including past - for testing/development)
-            // $availableSlots = FutsalSlot::with('timeSlot')
-            //     ->where('futsal_id', $id)
-            //     ->where('is_available', true)
-            //     ->orderBy('slot_date')
-            //     ->get();
-
             Log::info('Found ' . $availableSlots->count() . ' available slots for futsal ID: ' . $id);
-
-            // Log each slot for debugging
-            foreach ($availableSlots as $slot) {
-                Log::info('Slot ID: ' . $slot->id . ', Date: ' . $slot->slot_date . ', Available: ' . ($slot->is_available ? 'Yes' : 'No'));
-            }
 
             // Sort the slots by time after retrieving them
             $sortedSlots = $availableSlots->sortBy(function($slot) {
@@ -211,6 +211,8 @@ class FutsalController extends Controller
                     'formatted_time' => ($slot->timeSlot->start_time ?? '') . ' - ' . ($slot->timeSlot->end_time ?? ''),
                     'price' => (float) $slot->price,
                     'formatted_price' => 'Rs. ' . number_format($slot->price),
+                    'is_expired' => false,
+                    'is_available' => $slot->is_available,  // ← ADD THIS LINE
                 ];
             });
 
@@ -244,7 +246,6 @@ class FutsalController extends Controller
             ];
 
             Log::info('Successfully fetched futsal details for ID: ' . $id);
-            Log::info('Slots by date count: ' . $slotsByDate->count());
             
             return response()->json([
                 'success' => true,
@@ -281,6 +282,8 @@ class FutsalController extends Controller
             }
 
             $date = $request->date;
+            $currentTime = now()->format('H:i:s');
+            $today = now()->toDateString();
 
             // Get slots for specific date
             $slots = FutsalSlot::with('timeSlot')
@@ -289,8 +292,17 @@ class FutsalController extends Controller
                 ->where('slot_date', $date)
                 ->get();
 
-            // Sort by start_time in PHP
-            $sortedSlots = $slots->sortBy(function($slot) {
+            // Filter slots that are not expired (for today, only future slots)
+            $filteredSlots = $slots->filter(function($slot) use ($date, $currentTime, $today) {
+                if ($date > $today) {
+                    return true; // Future dates, all slots are valid
+                }
+                // Today, only slots that haven't started yet
+                return $slot->timeSlot->start_time > $currentTime;
+            });
+
+            // Sort by start_time
+            $sortedSlots = $filteredSlots->sortBy(function($slot) {
                 return $slot->timeSlot->start_time ?? '00:00:00';
             })->values();
 
@@ -302,6 +314,7 @@ class FutsalController extends Controller
                     'formatted_time' => ($slot->timeSlot->start_time ?? '') . ' - ' . ($slot->timeSlot->end_time ?? ''),
                     'price' => (float) $slot->price,
                     'formatted_price' => 'Rs. ' . number_format($slot->price),
+                    'is_expired' => false,
                 ];
             });
 

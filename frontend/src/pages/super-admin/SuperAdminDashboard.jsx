@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import api from "../../api/axios";
 import SuperAdminHeader from "./SuperAdminHeader";
 import FutsalsTab from "./FutsalsTab";
 import AdminsTab from "./AdminsTab";
+import BookingsTab from "./BookingsTab";
+import UsersTab from "./UsersTab";
+import StatsTab from "./StatsTab";
+import FutsalDetailsModal from "./FutsalDetailsModal";
 import FutsalModal from "./FutsalModal";
 import "../../styles/SuperAdminDashboard.css";
 
@@ -12,12 +16,18 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [futsals, setFutsals] = useState([]);
   const [admins, setAdmins] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [tab, setTab] = useState("futsals");
+  const [tab, setTab] = useState("stats");
   const [showFutsalModal, setShowFutsalModal] = useState(false);
+  const [showFutsalDetailsModal, setShowFutsalDetailsModal] = useState(false);
   const [editingFutsal, setEditingFutsal] = useState(null);
+  const [selectedFutsal, setSelectedFutsal] = useState(null);
+  const [selectedFutsalId, setSelectedFutsalId] = useState(null);
   
   // Admin form state
   const [adminForm, setAdminForm] = useState({
@@ -37,48 +47,94 @@ const SuperAdminDashboard = () => {
     location: "",
     contact_number: "",
     description: "",
-    manager_id: ""
+    manager_id: "",
+    image: null
   });
 
-  // Show success message
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Load data
+  // Load all data
   const loadFutsals = async () => {
-    setLoading(true);
     try {
       const res = await api.get("/super-admin/futsals");
       setFutsals(res.data || []);
     } catch (e) {
       setError("Failed to load futsals");
-    } finally {
-      setLoading(false);
     }
   };
 
   const loadAdmins = async () => {
-    setLoading(true);
     try {
       const res = await api.get("/super-admin/admins");
       setAdmins(res.data || []);
     } catch (e) {
       setError("Failed to load admins");
+    }
+  };
+
+  const loadBookings = async (futsalId = null) => {
+    try {
+      const url = futsalId 
+        ? `/super-admin/bookings?futsal_id=${futsalId}`
+        : "/super-admin/bookings";
+      const res = await api.get(url);
+      setBookings(res.data || []);
+    } catch (e) {
+      setError("Failed to load bookings");
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const res = await api.get("/super-admin/users");
+      setUsers(res.data || []);
+    } catch (e) {
+      setError("Failed to load users");
+    }
+  };
+
+  const loadStats = async (futsalId = null) => {
+    try {
+      const url = futsalId 
+        ? `/super-admin/stats?futsal_id=${futsalId}`
+        : "/super-admin/stats";
+      const res = await api.get(url);
+      setStats(res.data);
+    } catch (e) {
+      setError("Failed to load stats");
+    }
+  };
+
+  const loadFutsalDetails = async (futsalId) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/super-admin/futsals/${futsalId}`);
+      setSelectedFutsal(res.data);
+      setShowFutsalDetailsModal(true);
+    } catch (e) {
+      setError("Failed to load futsal details");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    loadStats();
     loadFutsals();
     loadAdmins();
+    loadBookings();
+    loadUsers();
   }, []);
 
-  useEffect(() => {
-    if (tab === "admins") loadAdmins();
-  }, [tab]);
+  // Handle futsal filter change
+  const handleFutsalFilter = (futsalId) => {
+    setSelectedFutsalId(futsalId);
+    loadStats(futsalId);
+    loadBookings(futsalId);
+  };
 
   // Admin functions
   const handleCreateAdmin = async (e) => {
@@ -140,7 +196,8 @@ const SuperAdminDashboard = () => {
       location: "",
       contact_number: "",
       description: "",
-      manager_id: ""
+      manager_id: "",
+      image: null
     });
     setShowFutsalModal(true);
   };
@@ -152,7 +209,8 @@ const SuperAdminDashboard = () => {
       location: f.location || "",
       contact_number: f.contact_number || "",
       description: f.description || "",
-      manager_id: f.manager_id || ""
+      manager_id: f.manager_id || "",
+      image: null
     });
     setShowFutsalModal(true);
   };
@@ -160,16 +218,30 @@ const SuperAdminDashboard = () => {
   const saveFutsal = async (e) => {
     e.preventDefault();
     setLoading(true);
+    
+    const formData = new FormData();
+    formData.append('name', futsalForm.name);
+    formData.append('location', futsalForm.location);
+    if (futsalForm.contact_number) formData.append('contact_number', futsalForm.contact_number);
+    if (futsalForm.description) formData.append('description', futsalForm.description);
+    if (futsalForm.manager_id) formData.append('manager_id', futsalForm.manager_id);
+    if (futsalForm.image) formData.append('image', futsalForm.image);
+    
     try {
       if (editingFutsal) {
-        await api.put(`/super-admin/futsals/${editingFutsal.id}`, futsalForm);
+        await api.post(`/super-admin/futsals/${editingFutsal.id}?_method=PUT`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
         showSuccess("Futsal updated successfully");
       } else {
-        await api.post("/super-admin/futsals", futsalForm);
+        await api.post("/super-admin/futsals", formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
         showSuccess("Futsal created successfully");
       }
       setShowFutsalModal(false);
       loadFutsals();
+      loadAdmins();
     } catch (err) {
       setError(err.response?.data?.message || "Failed to save futsal");
     } finally {
@@ -184,18 +256,22 @@ const SuperAdminDashboard = () => {
       await api.patch(`/super-admin/futsals/${f.id}/toggle-active`);
       showSuccess(`Futsal ${f.active ? "deactivated" : "activated"} successfully`);
       loadFutsals();
+      loadStats(selectedFutsalId);
     } catch (e) {
       setError("Failed to toggle status");
     }
   };
 
   const deleteFutsal = async (f) => {
-    if (!window.confirm(`Are you sure you want to delete ${f.futsal_name}?`)) return;
+    if (!window.confirm(`Are you sure you want to delete ${f.futsal_name}? This will also delete all slots.`)) return;
     try {
       await api.delete(`/super-admin/futsals/${f.id}`);
       showSuccess("Futsal deleted successfully");
       loadFutsals();
       loadAdmins();
+      if (selectedFutsalId === f.id) {
+        handleFutsalFilter(null);
+      }
     } catch (err) {
       setError(err.response?.data?.message || "Failed to delete futsal");
     }
@@ -222,25 +298,56 @@ const SuperAdminDashboard = () => {
           {error && <div className="alert alert-error">{error}</div>}
           {successMsg && <div className="alert alert-success">{successMsg}</div>}
 
-          <div className="stats-summary">
-            <div className="stat-card">
-              <span className="stat-value">{futsals.length}</span>
-              <span className="stat-label">Total Futsals</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{admins.length}</span>
-              <span className="stat-label">Total Admins</span>
-            </div>
+          {/* Futsal Filter */}
+          <div className="filter-bar">
+            <label>Filter by Futsal:</label>
+            <select 
+              value={selectedFutsalId || ""} 
+              onChange={(e) => handleFutsalFilter(e.target.value || null)}
+              className="futsal-filter-select"
+            >
+              <option value="">All Futsals</option>
+              {futsals.map(f => (
+                <option key={f.id} value={f.id}>
+                  {f.futsal_name} ({f.location})
+                </option>
+              ))}
+            </select>
+            {selectedFutsalId && (
+              <button 
+                className="clear-filter-btn"
+                onClick={() => handleFutsalFilter(null)}
+              >
+                Clear Filter
+              </button>
+            )}
           </div>
 
           <nav className="admin-nav">
+            <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>
+               Dashboard
+            </button>
             <button className={tab === "futsals" ? "active" : ""} onClick={() => setTab("futsals")}>
-              Futsals
+               Futsals
             </button>
             <button className={tab === "admins" ? "active" : ""} onClick={() => setTab("admins")}>
-              Admins
+               Admins
+            </button>
+            <button className={tab === "bookings" ? "active" : ""} onClick={() => setTab("bookings")}>
+               Bookings
+            </button>
+            <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
+               Users
             </button>
           </nav>
+
+          {tab === "stats" && (
+            <StatsTab 
+              stats={stats} 
+              selectedFutsalId={selectedFutsalId}
+              futsals={futsals}
+            />
+          )}
 
           {tab === "futsals" && (
             <FutsalsTab
@@ -248,6 +355,7 @@ const SuperAdminDashboard = () => {
               loading={loading}
               onAdd={openAddFutsal}
               onEdit={openEditFutsal}
+              onView={loadFutsalDetails}
               onToggle={toggleFutsalActive}
               onDelete={deleteFutsal}
             />
@@ -266,6 +374,20 @@ const SuperAdminDashboard = () => {
               onDeleteAdmin={handleDeleteAdmin}
             />
           )}
+
+          {tab === "bookings" && (
+            <BookingsTab 
+              bookings={bookings} 
+              loading={loading}
+              futsals={futsals}
+              selectedFutsalId={selectedFutsalId}
+              onFilterChange={handleFutsalFilter}
+            />
+          )}
+
+          {tab === "users" && (
+            <UsersTab users={users} loading={loading} />
+          )}
         </main>
 
         {showFutsalModal && (
@@ -277,6 +399,13 @@ const SuperAdminDashboard = () => {
             onSave={saveFutsal}
             onClose={() => setShowFutsalModal(false)}
             loading={loading}
+          />
+        )}
+
+        {showFutsalDetailsModal && selectedFutsal && (
+          <FutsalDetailsModal
+            futsal={selectedFutsal}
+            onClose={() => setShowFutsalDetailsModal(false)}
           />
         )}
       </div>

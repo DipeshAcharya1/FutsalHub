@@ -1,6 +1,13 @@
 import React from "react";
 
 const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave, onClose, loading }) => {
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFutsalForm({ ...futsalForm, image: file });
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal-content">
@@ -48,6 +55,21 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
               onChange={(e) => setFutsalForm({ ...futsalForm, description: e.target.value })}
               rows="3"
             />
+          </div>
+
+          <div className="form-group">
+            <label>Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+            />
+            {editingFutsal?.image && !futsalForm.image && (
+              <div className="current-image">
+                <small>Current image: </small>
+                <img src={editingFutsal.image} alt="Current" style={{ width: '50px', height: '50px', objectFit: 'cover', marginTop: '5px' }} />
+              </div>
+            )}
           </div>
 
           <div className="form-group">
