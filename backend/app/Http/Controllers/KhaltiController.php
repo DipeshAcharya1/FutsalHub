@@ -9,15 +9,18 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 
 class KhaltiController extends Controller
 {
     /**
-     * Initialize payment - Store in payment_intents
+     * Initialize payment for single slot
      */
     public function initiatePayment(Request $request): JsonResponse
     {
         try {
+            Log::info('=== SINGLE PAYMENT INITIATION ===');
+            
             $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
                 'slot_id' => 'required|exists:futsal_slots,id',
                 'amount' => 'required|numeric|min:1',
@@ -33,9 +36,17 @@ class KhaltiController extends Controller
             }
 
             $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
+            
             $slot = DB::table('futsal_slots')->where('id', $request->slot_id)->first();
             
-            if (!$slot->is_available) {
+            if (!$slot || !$slot->is_available) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Slot is no longer available'
@@ -63,7 +74,7 @@ class KhaltiController extends Controller
             $payload = [
                 'return_url' => $returnUrl,
                 'website_url' => env('KHALTI_WEBSITE_URL', 'http://localhost:5173'),
-                'amount' => $request->amount * 100,
+                'amount' => (int)($request->amount * 100),
                 'purchase_order_id' => $transactionId,
                 'purchase_order_name' => 'Futsal Booking',
                 'customer_info' => [
@@ -110,14 +121,22 @@ class KhaltiController extends Controller
     }
 
     /**
-     * Verify payment and create booking AFTER successful payment
+     * Initialize bulk payment for multiple slots
      */
-   public function verifyPayment(Request $request): JsonResponse
+    public function initiateBulkPayment(Request $request): JsonResponse
     {
         try {
+            Log::info('=== BULK PAYMENT INITIATION ===');
+            Log::info('Request data:', $request->all());
+            
             $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-                'pidx' => 'required|string',
-                'transaction_id' => 'required|string',
+                'slots' => 'required|array|min:1',
+                'slots.*.slot_id' => 'required|exists:futsal_slots,id',
+                'slots.*.amount' => 'required|numeric',
+                'slots.*.futsal_id' => 'required|exists:futsals,id',
+                'slots.*.booking_date' => 'required|date',
+                'total_amount' => 'required|numeric',
+                'total_slots' => 'required|integer'
             ]);
 
             if ($validator->fails()) {
@@ -127,301 +146,672 @@ class KhaltiController extends Controller
                 ], 422);
             }
 
-            //pidx is the payment index or payment ID that Khalti generates when a payment is initiated. 
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
+            
+            // Check if all slots are available
+            foreach ($request->slots as $slotData) {
+                $slot = DB::table('futsal_slots')->where('id', $slotData['slot_id'])->first();
+                if (!$slot || !$slot->is_available) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'One or more slots are no longer available'
+                    ], 400);
+                }
+            }
+            
+            // Generate unique bulk booking ID
+            $bulkBookingId = 'BULK_' . uniqid() . '_' . time();
+            
+            // Store bulk payment intent
+            DB::table('bulk_payment_intents')->insert([
+                'bulk_booking_id' => $bulkBookingId,
+                'user_id' => $user->id,
+                'slots_data' => json_encode($request->slots),
+                'total_amount' => $request->total_amount,
+                'total_slots' => $request->total_slots,
+                'expires_at' => Carbon::now()->addMinutes(30),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-            // First, check if booking already exists for this transaction
-            $existingPayment = DB::table('payments')
-                ->where('transaction_id', $request->pidx)
+            $returnUrl = env('KHALTI_RETURN_URL', 'http://localhost:5173/payment/verify') . '?bulk_booking_id=' . $bulkBookingId;
+
+            $payload = [
+                'return_url' => $returnUrl,
+                'website_url' => env('KHALTI_WEBSITE_URL', 'http://localhost:5173'),
+                'amount' => (int)($request->total_amount * 100),
+                'purchase_order_id' => $bulkBookingId,
+                'purchase_order_name' => 'Bulk Booking - ' . $request->total_slots . ' slots',
+                'customer_info' => [
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone ?? 'N/A',
+                ],
+            ];
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+                'Content-Type' => 'application/json',
+            ])->post(env('KHALTI_BASE_URL') . '/epayment/initiate/', $payload);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                
+                DB::table('bulk_payment_intents')
+                    ->where('bulk_booking_id', $bulkBookingId)
+                    ->update([
+                        'pidx' => $data['pidx'],
+                        'updated_at' => now(),
+                    ]);
+
+                return response()->json([
+                    'success' => true,
+                    'payment_url' => $data['payment_url'],
+                    'bulk_booking_id' => $bulkBookingId,
+                    'pidx'=> $data['pidx'],
+                ]);
+            } else {
+                DB::table('bulk_payment_intents')->where('bulk_booking_id', $bulkBookingId)->delete();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment initiation failed'
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Bulk payment initiation error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+   /**
+ * Verify payment and create booking AFTER successful payment
+ */
+public function verifyPayment(Request $request): JsonResponse
+{
+    try {
+        Log::info('=== PAYMENT VERIFICATION ===');
+        Log::info('Request data:', $request->all());
+        
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'pidx' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // FIRST: Check if booking already exists for this transaction
+        $existingPayment = DB::table('payments')
+            ->where('transaction_id', $request->pidx)
+            ->first();
+            
+        if ($existingPayment && $existingPayment->booking_id) {
+            $booking = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('bookings.id', $existingPayment->booking_id)
                 ->first();
-
-            if ($existingPayment && $existingPayment->booking_id) {
-                $booking = DB::table('bookings')
-                    ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-                    ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
-                    ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
-                    ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-                    ->where('bookings.id', $existingPayment->booking_id)
-                    ->first();
                 
-                // Send confirmation email if not sent
-                $this->sendBookingConfirmation($booking);
-                
+            if ($booking) {
+                Log::info('Booking already exists', ['booking_id' => $booking->id]);
                 return response()->json([
                     'success' => true,
                     'message' => 'Booking already confirmed!',
                     'booking' => $booking,
                 ]);
             }
+        }
 
-            // Get payment intent
-            $intent = DB::table('payment_intents')
-                ->where('transaction_id', $request->transaction_id)
+        // SECOND: Check if it's a bulk payment
+        $bulkIntent = DB::table('bulk_payment_intents')
+            ->where('pidx', $request->pidx)
+            ->first();
+
+        if ($bulkIntent) {
+            Log::info('Found bulk payment intent', ['bulk_booking_id' => $bulkIntent->bulk_booking_id]);
+            
+            // Check if bulk bookings already exist
+            $existingBulkBookings = DB::table('bookings')
+                ->where('bulk_booking_id', $bulkIntent->bulk_booking_id)
                 ->first();
-
-            if (!$intent) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment intent not found. Please contact support.'
-                ], 404);
-            }
-
-            // Verify with Khalti
-            $response = Http::withHeaders([
-                'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
-                'Content-Type' => 'application/json',
-            ])->post(env('KHALTI_BASE_URL') . '/epayment/lookup/', [
-                'pidx' => $request->pidx,
-            ]);
-
-            if ($response->successful()) {
-                $data = $response->json();
                 
-                if ($data['status'] === 'Completed') {
-                    // Check if slot is still available
-                    $slot = DB::table('futsal_slots')
-                        ->where('id', $intent->slot_id)
+            if ($existingBulkBookings) {
+                Log::info('Bulk bookings already exist', ['bulk_booking_id' => $bulkIntent->bulk_booking_id]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Bulk booking already confirmed!',
+                ]);
+            }
+            
+            return $this->verifyBulkPayment($bulkIntent, $request->pidx);
+        }
+
+        // THIRD: Check regular payment intent
+        $intent = DB::table('payment_intents')
+            ->where('pidx', $request->pidx)
+            ->first();
+
+        if (!$intent) {
+            // Try to find by bulk_booking_id from the request
+            $bulkBookingId = $request->bulk_booking_id;
+            if ($bulkBookingId) {
+                $bulkIntent = DB::table('bulk_payment_intents')
+                    ->where('bulk_booking_id', $bulkBookingId)
+                    ->first();
+                    
+                if ($bulkIntent) {
+                    Log::info('Found bulk payment intent by bulk_booking_id', ['bulk_booking_id' => $bulkBookingId]);
+                    
+                    // Check if bulk bookings already exist
+                    $existingBulkBookings = DB::table('bookings')
+                        ->where('bulk_booking_id', $bulkIntent->bulk_booking_id)
                         ->first();
-                    
-                    if (!$slot->is_available) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Slot is no longer available. Your payment will be refunded.'
-                        ], 400);
-                    }
-                    
-                    DB::beginTransaction();
-                    
-                    try {
-                        // CREATE BOOKING AFTER SUCCESSFUL PAYMENT
-                        $bookingId = DB::table('bookings')->insertGetId([
-                            'user_id' => $intent->user_id,
-                            'futsal_slot_id' => $intent->slot_id,
-                            'booking_date' => $intent->booking_date,
-                            'status' => 'confirmed',
-                            'payment_status' => 'paid',
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]);
                         
-                        // Mark slot as unavailable
-                        DB::table('futsal_slots')
-                            ->where('id', $intent->slot_id)
-                            ->update([
-                                'is_available' => false,
-                                'updated_at' => now(),
-                            ]);
-                        
-                        // Create payment record
-                        DB::table('payments')->insert([
-                            'booking_id' => $bookingId,
-                            'amount' => $intent->amount,
-                            'payment_method' => 'Online',
-                            'transaction_id' => $request->pidx,
-                            'payment_date' => now(),
-                            'status' => 'completed',
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]);
-                        
-                        // Delete payment intent
-                        DB::table('payment_intents')->where('id', $intent->id)->delete();
-                        
-                        DB::commit();
-                        
-                        // Get booking details for email
-                        $booking = DB::table('bookings')
-                            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-                            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
-                            ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
-                            ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-                            ->where('bookings.id', $bookingId)
-                            ->first();
-                        
-                        // Send confirmation email
-                        $this->sendBookingConfirmation($booking);
-                        
+                    if ($existingBulkBookings) {
                         return response()->json([
                             'success' => true,
-                            'message' => 'Payment successful! Booking confirmed.',
-                            'booking' => $booking,
+                            'message' => 'Bulk booking already confirmed!',
                         ]);
-                        
-                    } catch (\Exception $e) {
-                        DB::rollBack();
-                        Log::error('Booking creation error: ' . $e->getMessage());
-                        throw $e;
                     }
-                } else {
-                    DB::table('payment_intents')->where('id', $intent->id)->delete();
                     
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Payment not completed. Status: ' . $data['status']
-                    ], 400);
+                    return $this->verifyBulkPayment($bulkIntent, $request->pidx);
                 }
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment verification failed'
-                ], 500);
             }
-        } catch (\Exception $e) {
-            Log::error('Verification error: ' . $e->getMessage());
+            
+            Log::error('Payment intent not found for pidx: ' . $request->pidx);
             return response()->json([
                 'success' => false,
-                'message' => 'Verification error: ' . $e->getMessage()
+                'message' => 'Payment intent not found. Please contact support.'
+            ], 404);
+        }
+
+        Log::info('Found payment intent', ['intent_id' => $intent->id]);
+        
+        // Verify with Khalti
+        $response = Http::withHeaders([
+            'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+            'Content-Type' => 'application/json',
+        ])->post(env('KHALTI_BASE_URL') . '/epayment/lookup/', [
+            'pidx' => $request->pidx,
+        ]);
+
+        if (!$response->successful()) {
+            Log::error('Khalti lookup failed', ['response' => $response->body()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment verification failed'
+            ], 500);
+        }
+
+        $data = $response->json();
+        Log::info('Khalti lookup response', ['data' => $data]);
+        
+        if ($data['status'] !== 'Completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not completed. Status: ' . $data['status']
+            ], 400);
+        }
+
+        // Check if slot is still available
+        $slot = DB::table('futsal_slots')->where('id', $intent->slot_id)->first();
+        
+        if (!$slot->is_available) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Slot is no longer available. Your payment will be refunded.'
+            ], 400);
+        }
+        
+        DB::beginTransaction();
+        
+        try {
+            // CREATE BOOKING AFTER SUCCESSFUL PAYMENT
+            $bookingId = DB::table('bookings')->insertGetId([
+                'user_id' => $intent->user_id,
+                'futsal_slot_id' => $intent->slot_id,
+                'booking_date' => $intent->booking_date,
+                'status' => 'confirmed',
+                'payment_status' => 'paid',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            // Mark slot as unavailable
+            DB::table('futsal_slots')
+                ->where('id', $intent->slot_id)
+                ->update([
+                    'is_available' => false,
+                    'updated_at' => now(),
+                ]);
+            
+            // Create payment record
+            DB::table('payments')->insert([
+                'booking_id' => $bookingId,
+                'amount' => $intent->amount,
+                'payment_method' => 'Online',
+                'transaction_id' => $request->pidx,
+                'payment_date' => now(),
+                'status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            // Delete payment intent
+            DB::table('payment_intents')->where('id', $intent->id)->delete();
+            
+            DB::commit();
+            
+            // Get booking details for email
+            $booking = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('bookings.id', $bookingId)
+                ->first();
+            
+            // Send confirmation email
+            $this->sendBookingConfirmation($booking);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment successful! Booking confirmed.',
+                'booking' => $booking,
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Booking creation error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create booking: ' . $e->getMessage()
+            ], 500);
+        }
+    } catch (\Exception $e) {
+        Log::error('Verification error: ' . $e->getMessage());
+        Log::error($e->getTraceAsString());
+        return response()->json([
+            'success' => false,
+            'message' => 'Verification error: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+    /**
+     * Verify single payment and create booking
+     */
+    private function verifySinglePayment($intent, $pidx)
+    {
+        // Verify with Khalti
+        $response = Http::withHeaders([
+            'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+            'Content-Type' => 'application/json',
+        ])->post(env('KHALTI_BASE_URL') . '/epayment/lookup/', [
+            'pidx' => $pidx,
+        ]);
+
+        if (!$response->successful() || $response['status'] !== 'Completed') {
+            DB::table('payment_intents')->where('id', $intent->id)->delete();
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not completed'
+            ], 400);
+        }
+
+        // Check if slot is still available
+        $slot = DB::table('futsal_slots')->where('id', $intent->slot_id)->first();
+        
+        if (!$slot->is_available) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Slot is no longer available'
+            ], 400);
+        }
+        
+        DB::beginTransaction();
+        
+        try {
+            // Create booking
+            $bookingId = DB::table('bookings')->insertGetId([
+                'user_id' => $intent->user_id,
+                'futsal_slot_id' => $intent->slot_id,
+                'booking_date' => $intent->booking_date,
+                'status' => 'confirmed',
+                'payment_status' => 'paid',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            // Mark slot as unavailable
+            DB::table('futsal_slots')
+                ->where('id', $intent->slot_id)
+                ->update(['is_available' => false]);
+            
+            // Create payment record
+            DB::table('payments')->insert([
+                'booking_id' => $bookingId,
+                'amount' => $intent->amount,
+                'payment_method' => 'Online',
+                'transaction_id' => $pidx,
+                'payment_date' => now(),
+                'status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            // Delete payment intent
+            DB::table('payment_intents')->where('id', $intent->id)->delete();
+            
+            DB::commit();
+            
+            // Get booking details for response
+            $booking = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
+                ->where('bookings.id', $bookingId)
+                ->first();
+            
+            // Send confirmation email
+            $this->sendBookingConfirmation($booking);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment successful! Booking confirmed.',
+                'booking' => $booking,
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Booking creation error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create booking: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    private function sendBookingConfirmation($booking)
+    private function verifyBulkPayment($bulkIntent, $pidx)
+{
+    // First, check if bulk bookings already exist
+    $existingBulkBookings = DB::table('bookings')
+        ->where('bulk_booking_id', $bulkIntent->bulk_booking_id)
+        ->first();
+        
+    if ($existingBulkBookings) {
+        Log::info('Bulk bookings already exist', ['bulk_booking_id' => $bulkIntent->bulk_booking_id]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Bulk booking already confirmed!',
+        ]);
+    }
+    
+    // Verify with Khalti
+    $response = Http::withHeaders([
+        'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+        'Content-Type' => 'application/json',
+    ])->post(env('KHALTI_BASE_URL') . '/epayment/lookup/', [
+        'pidx' => $pidx,
+    ]);
+
+    if (!$response->successful()) {
+        Log::error('Khalti lookup failed for bulk payment', ['response' => $response->body()]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Payment verification failed'
+        ], 500);
+    }
+
+    $data = $response->json();
+    Log::info('Khalti lookup response for bulk', ['data' => $data]);
+    
+    if ($data['status'] !== 'Completed') {
+        DB::table('bulk_payment_intents')->where('id', $bulkIntent->id)->delete();
+        return response()->json([
+            'success' => false,
+            'message' => 'Payment not completed. Status: ' . $data['status']
+        ], 400);
+    }
+
+    $slots = json_decode($bulkIntent->slots_data, true);
+    
+    // Check if all slots are still available
+    foreach ($slots as $slotData) {
+        $slot = DB::table('futsal_slots')->where('id', $slotData['slot_id'])->first();
+        if (!$slot || !$slot->is_available) {
+            return response()->json([
+                'success' => false,
+                'message' => 'One or more slots are no longer available'
+            ], 400);
+        }
+    }
+    
+    DB::beginTransaction();
+    
+    try {
+        $bookingIds = [];
+        $bulkBookingId = $bulkIntent->bulk_booking_id;
+        
+        foreach ($slots as $slotData) {
+            $bookingId = DB::table('bookings')->insertGetId([
+                'user_id' => $bulkIntent->user_id,
+                'futsal_slot_id' => $slotData['slot_id'],
+                'booking_date' => $slotData['booking_date'],
+                'status' => 'confirmed',
+                'payment_status' => 'paid',
+                'bulk_booking_id' => $bulkBookingId,
+                'is_bulk_booking' => true,
+                'total_slots' => $bulkIntent->total_slots,
+                'total_amount' => $bulkIntent->total_amount,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $bookingIds[] = $bookingId;
+            
+            DB::table('futsal_slots')
+                ->where('id', $slotData['slot_id'])
+                ->update(['is_available' => false]);
+        }
+        
+        DB::table('payments')->insert([
+            'booking_id' => $bookingIds[0],
+            'amount' => $bulkIntent->total_amount,
+            'payment_method' => 'Online',
+            'transaction_id' => $pidx,
+            'payment_date' => now(),
+            'status' => 'completed',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        
+        DB::table('bulk_payment_intents')->where('id', $bulkIntent->id)->delete();
+        
+        DB::commit();
+        
+        $booking = DB::table('bookings')
+            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+            ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
+            ->where('bookings.id', $bookingIds[0])
+            ->first();
+        
+        $this->sendBulkBookingConfirmation($booking, $bulkIntent->user_id, $slots);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment successful! ' . count($bookingIds) . ' slots booked.',
+            'booking' => $booking,
+            'total_slots' => count($bookingIds),
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Bulk booking creation error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to create bookings: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+    /**
+ * Send single booking confirmation email - FIXED
+ */
+private function sendBookingConfirmation($booking)
 {
     try {
-        // Get user email properly
         $user = DB::table('users')->where('id', $booking->user_id)->first();
         
         if (!$user || !$user->email) {
-            Log::error('Cannot send email: user not found or no email', ['user_id' => $booking->user_id ?? 'unknown']);
+            Log::error('Cannot send email: user not found', [
+                'user_id' => $booking->user_id,
+                'booking_id' => $booking->id ?? 'N/A'
+            ]);
             return;
         }
 
-        Log::info('Sending booking confirmation email to: ' . $user->email);
-        
-        $html = "
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Booking Confirmed - FutsalHub</title>
-            <meta charset='UTF-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <style>
-                body {
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    background-color: #f4f4f4;
-                    margin: 0;
-                    padding: 20px;
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 0 auto;
-                    background: white;
-                    border-radius: 10px;
-                    overflow: hidden;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
-                .header {
-                    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-                    color: white;
-                    padding: 30px;
-                    text-align: center;
-                }
-                .header h1 {
-                    margin: 0;
-                    font-size: 24px;
-                }
-                .content {
-                    padding: 30px;
-                }
-                .booking-details {
-                    background: #f8f9fa;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 20px 0;
-                }
-                .detail-row {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 10px 0;
-                    border-bottom: 1px solid #e0e0e0;
-                }
-                .detail-row:last-child {
-                    border-bottom: none;
-                }
-                .price {
-                    font-size: 20px;
-                    font-weight: 700;
-                    color: #27ae60;
-                }
-                .button {
-                    display: inline-block;
-                    background: #3498db;
-                    color: white;
-                    padding: 12px 24px;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    margin-top: 20px;
-                }
-                .footer {
-                    background: #f8f9fa;
-                    padding: 20px;
-                    text-align: center;
-                    font-size: 12px;
-                    color: #777;
-                    border-top: 1px solid #e0e0e0;
-                }
-            </style>
-        </head>
-        <body>
-            <div class='container'>
-                <div class='header'>
-                    <h1>Booking Confirmed! ✓</h1>
-                    <p>Thank you for booking with FutsalHub</p>
-                </div>
-                <div class='content'>
-                    <h2>Hello " . ($user->name ?? 'Valued Customer') . ",</h2>
-                    <p>Your booking has been <strong>CONFIRMED</strong> and payment has been received successfully.</p>
-                    <div class='booking-details'>
-                        <h3>Booking Details</h3>
-                        <div class='detail-row'>
-                            <span>Booking ID:</span>
-                            <strong>#" . ($booking->id ?? 'N/A') . "</strong>
-                        </div>
-                        <div class='detail-row'>
-                            <span>Futsal:</span>
-                            <strong>" . ($booking->futsal_name ?? 'N/A') . "</strong>
-                        </div>
-                        <div class='detail-row'>
-                            <span>Location:</span>
-                            <strong>" . ($booking->location ?? 'N/A') . "</strong>
-                        </div>
-                        <div class='detail-row'>
-                            <span>Date:</span>
-                            <strong>" . ($booking->slot_date ? date('d M Y', strtotime($booking->slot_date)) : 'N/A') . "</strong>
-                        </div>
-                        <div class='detail-row'>
-                            <span>Time:</span>
-                            <strong>" . ($booking->start_time ?? 'N/A') . " - " . ($booking->end_time ?? 'N/A') . "</strong>
-                        </div>
-                        <div class='detail-row'>
-                            <span>Amount Paid:</span>
-                            <strong class='price'>Rs. " . ($booking->price ?? '0') . "</strong>
-                        </div>
-                    </div>
-                    <p>Please arrive at the venue 15 minutes before your scheduled time.</p>
-                    <div style='text-align: center;'>
-                        <a href='" . env('FRONTEND_URL', 'http://localhost:5173') . "/my-bookings' class='button'>View My Bookings</a>
-                    </div>
-                </div>
-                <div class='footer'>
-                    <p>FutsalHub - Easy Futsal Booking</p>
-                    <p>Email: support@futsalhub.com | Phone: +977 9800000000</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        ";
+        Log::info('Preparing confirmation email for: ' . $user->email, [
+            'booking_id' => $booking->id,
+            'futsal_name' => $booking->futsal_name ?? 'N/A'
+        ]);
 
-        Mail::html($html, function ($message) use ($user) {
+        // Prepare email content with proper fallbacks
+        $futsalName = $booking->futsal_name ?? 'N/A';
+        $slotDate = $booking->slot_date ?? $booking->booking_date ?? now();
+        $startTime = $booking->start_time ?? 'N/A';
+        $endTime = $booking->end_time ?? 'N/A';
+        $price = $booking->price ?? '0';
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+        $emailBody = "Hello {$user->name},\n\n"
+            . "✅ Your booking has been CONFIRMED!\n\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "📋 BOOKING DETAILS\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Booking ID: #{$booking->id}\n"
+            . "Futsal: {$futsalName}\n"
+            . "Date: " . date('d M Y', strtotime($slotDate)) . "\n"
+            . "Time: {$startTime} - {$endTime}\n"
+            . "Amount: Rs. {$price}\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            . "📍 Important Information:\n"
+            . "• Please arrive 15 minutes before your booking time\n"
+            . "• Cancellation allowed up to 2 hours before the slot\n"
+            . "• Show this email at the futsal counter\n\n"
+            . "🔗 View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
+            . "Thank you for choosing FutsalHub!\n"
+            . "🏃‍♂️⚽ Have a great game!\n\n"
+            . "Regards,\n"
+            . "FutsalHub Team";
+
+        // Use Mail::raw for plain text email (this works!)
+        Mail::raw($emailBody, function ($message) use ($user, $booking) {
             $message->to($user->email, $user->name ?? 'Valued Customer')
-                    ->subject('Booking Confirmed - FutsalHub #' . ($booking->id ?? 'N/A'));
+                    ->subject('✅ Booking Confirmed - FutsalHub #' . $booking->id);
         });
         
-        Log::info('Booking confirmation email sent successfully to: ' . $user->email);
+        Log::info('✓ Confirmation email sent successfully to: ' . $user->email, [
+            'booking_id' => $booking->id
+        ]);
         
     } catch (\Exception $e) {
-        Log::error('Failed to send confirmation email: ' . $e->getMessage());
+        Log::error('✗ Failed to send confirmation email: ' . $e->getMessage(), [
+            'booking_id' => $booking->id ?? 'N/A',
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+}
+
+/**
+ * Send bulk booking confirmation email - FIXED
+ */
+private function sendBulkBookingConfirmation($booking, $userId, $slots)
+{
+    try {
+        $user = DB::table('users')->where('id', $userId)->first();
+        
+        if (!$user || !$user->email) {
+            Log::error('Cannot send bulk confirmation email: user not found', [
+                'user_id' => $userId
+            ]);
+            return;
+        }
+
+        Log::info('Preparing bulk confirmation email for: ' . $user->email);
+
+        // Build slots list
+        $slotsList = '';
+        $totalAmount = 0;
+        
+        foreach ($slots as $index => $slot) {
+            $startTime = $slot['start_time'] ?? $slot['startTime'] ?? 'N/A';
+            $endTime = $slot['end_time'] ?? $slot['endTime'] ?? 'N/A';
+            $amount = $slot['amount'] ?? $slot['price'] ?? 0;
+            $bookingDate = $slot['booking_date'] ?? $slot['date'] ?? now();
+            $totalAmount += $amount;
+            
+            $slotsList .= "\n  " . ($index + 1) . ". " . date('d M Y', strtotime($bookingDate)) 
+                . " | {$startTime} - {$endTime} | Rs. {$amount}";
+        }
+
+        $futsalName = $booking->futsal_name ?? $booking->name ?? 'Futsal Hub';
+        $location = $booking->location ?? 'N/A';
+        $totalSlots = count($slots);
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+        $emailBody = "Hello {$user->name},\n\n"
+            . "✅ Your BULK BOOKING has been CONFIRMED!\n\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "📋 BULK BOOKING DETAILS\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "Reference ID: #{$booking->id}\n"
+            . "Futsal: {$futsalName}\n"
+            . "Location: {$location}\n"
+            . "Total Slots: {$totalSlots}\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "📅 BOOKED SLOTS:\n"
+            . "{$slotsList}\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            . "💰 Total Amount: Rs. {$totalAmount}\n"
+            . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            . "📍 Important Information:\n"
+            . "• Please arrive 15 minutes before your first booking\n"
+            . "• Cancellation allowed up to 2 hours before each slot\n"
+            . "• Show this email at the futsal counter\n\n"
+            . "🔗 View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
+            . "Thank you for choosing FutsalHub!\n"
+            . "🏃‍♂️⚽ Have a great game!\n\n"
+            . "Regards,\n"
+            . "FutsalHub Team";
+
+        Mail::raw($emailBody, function ($message) use ($user, $booking) {
+            $message->to($user->email, $user->name ?? 'Valued Customer')
+                    ->subject('✅ Bulk Booking Confirmed - FutsalHub #' . $booking->id);
+        });
+        
+        Log::info('✓ Bulk confirmation email sent successfully to: ' . $user->email);
+        
+    } catch (\Exception $e) {
+        Log::error('✗ Failed to send bulk confirmation email: ' . $e->getMessage(), [
+            'booking_id' => $booking->id ?? 'N/A',
+            'trace' => $e->getTraceAsString()
+        ]);
     }
 }
 }

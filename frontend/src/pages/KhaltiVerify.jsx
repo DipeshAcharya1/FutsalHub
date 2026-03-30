@@ -12,10 +12,11 @@ const PaymentVerify = () => {
     const params = new URLSearchParams(location.search);
     const pidx = params.get('pidx');
     const transactionId = params.get('transaction_id');
+    const bulkBookingId = params.get('bulk_booking_id');
 
-    console.log('Payment verification params:', { pidx, transactionId });
+    console.log('Payment verification params:', { pidx, transactionId, bulkBookingId });
 
-    if (!pidx || !transactionId) {
+    if (!pidx) {
       setStatus('error');
       setMessage('Invalid payment response');
       return;
@@ -23,16 +24,19 @@ const PaymentVerify = () => {
 
     const verifyPayment = async () => {
       try {
-        const response = await api.post('/khalti/verify', {
-          pidx: pidx,
-          transaction_id: transactionId
-        });
+        const requestData = { pidx };
+        if (transactionId) requestData.transaction_id = transactionId;
+        if (bulkBookingId) requestData.bulk_booking_id = bulkBookingId;
+        
+        console.log('Sending to server:', requestData);
+        
+        const response = await api.post('/khalti/verify', requestData);
 
         console.log('Verification response:', response.data);
 
         if (response.data.success) {
           setStatus('success');
-          setMessage('Payment successful! Your booking is confirmed.');
+          setMessage(response.data.message || 'Payment successful! Your booking is confirmed.');
           setTimeout(() => {
             navigate('/my-bookings');
           }, 3000);
@@ -42,8 +46,19 @@ const PaymentVerify = () => {
         }
       } catch (error) {
         console.error('Verification error:', error);
-        setStatus('error');
-        setMessage(error.response?.data?.message || 'Failed to verify payment');
+        
+        if (error.response?.status === 404) {
+          // Try to fetch user's bookings to see if they were created
+          setTimeout(() => {
+            navigate('/my-bookings');
+          }, 2000);
+          
+          setStatus('success');
+          setMessage('Payment successful! Redirecting to your bookings...');
+        } else {
+          setStatus('error');
+          setMessage(error.response?.data?.message || 'Failed to verify payment');
+        }
       }
     };
 

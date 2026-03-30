@@ -37,8 +37,9 @@ Route::get('/futsals/{id}', [FutsalController::class, 'show']);
 Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
 
 
-
+// =============================================
 // PROTECTED ROUTES (require authentication)
+// =============================================
 Route::middleware('auth:sanctum')->group(function () {
     // USER ROUTES
     Route::get('/user/profile', [UserController::class, 'getProfile']);
@@ -53,10 +54,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::post('/bookings/{id}/refund', [BookingController::class, 'cancelBooking']);
     Route::get('/payment/history', [BookingController::class, 'getPaymentHistory']);
+    Route::post('/bookings/bulk/cancel', [BookingController::class, 'cancelBulkBooking']);
+    Route::get('/bookings/bulk/{bulkBookingId}', [BookingController::class, 'getBulkBookingDetails']);
 
-    // KHALTI PAYMENT ROUTES
+
+// =============================================
+// KHALTI PAYMENT ROUTES 
+// =============================================
 Route::post('/khalti/initiate', [KhaltiController::class, 'initiatePayment']);
+Route::post('/khalti/initiate-bulk', [KhaltiController::class, 'initiateBulkPayment']);
 Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
+
 
     // ADMIN ROUTES
     Route::get('/admin/futsals/{futsal}', [AdminDashboardController::class, 'futsal']);

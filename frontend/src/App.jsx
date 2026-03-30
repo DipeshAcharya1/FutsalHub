@@ -6,7 +6,6 @@ import Futsals from "./pages/Futsals";
 import Profile from "./pages/UserProfile";
 import FutsalDetails from "./pages/futsal/FutsalDetails";
 import BookingSuccess from "./pages/futsal/BookingSuccess";
-import MyBookings from "./pages/bookings/MyBookings";
 import BookingDetails from "./pages/bookings/BookingDetails";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
@@ -15,6 +14,7 @@ import GoogleCallback from "./pages/GoogleCallback";
 import ResetPassword from "./pages/ResetPassword";
 import ForgotPassword from "./pages/ForgotPassword";
 import PaymentVerify from "./pages/KhaltiVerify";
+import KhaltiPayment from "./components/KhaltiPayment";
 
 const App = () => {
   return (
@@ -38,14 +38,6 @@ const App = () => {
           element={
             <ProtectedRoute>
               <BookingSuccess />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-bookings"
-          element={
-            <ProtectedRoute>
-              <MyBookings />
             </ProtectedRoute>
           }
         />

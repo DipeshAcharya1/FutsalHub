@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import api from "../api/axios";
@@ -7,12 +7,24 @@ import "../styles/UserProfile.css";
 
 const UserProfile = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState("profile");
+  
+  // Get active tab from URL query parameter
+  const getActiveTabFromUrl = () => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'profile' || tab === 'password' || tab === 'bookings') {
+      return tab;
+    }
+    return 'profile';
+  };
+  
+  const [activeTab, setActiveTab] = useState(getActiveTabFromUrl);
   
   // Profile form
   const [profileForm, setProfileForm] = useState({
@@ -35,11 +47,34 @@ const UserProfile = () => {
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cancelling, setCancelling] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+
+  // Update URL when tab changes
+  const updateTabInUrl = (tab) => {
+    const params = new URLSearchParams(location.search);
+    params.set('tab', tab);
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    updateTabInUrl(tab);
+  };
 
   useEffect(() => {
     loadUserData();
     loadUserBookings();
   }, []);
+
+  // Re-read tab from URL when location changes (for browser back/forward)
+  useEffect(() => {
+    const tabFromUrl = getActiveTabFromUrl();
+    if (tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [location.search]);
 
   const loadUserData = async () => {
     const userStr = localStorage.getItem("user");
@@ -75,7 +110,9 @@ const UserProfile = () => {
     setBookingsLoading(true);
     try {
       const response = await api.get("/user/bookings");
-      setBookings(response.data.data || []);
+      if (response.data.success) {
+        setBookings(response.data.data || []);
+      }
     } catch (err) {
       console.error("Failed to load bookings:", err);
     } finally {
@@ -215,8 +252,9 @@ const UserProfile = () => {
           new_password: "",
           new_password_confirmation: "",
         });
-        showSuccess("Password changed");
-        setActiveTab("profile");
+        showSuccess("Password changed successfully");
+        setFormErrors({});
+        // Stay on same tab - no redirect
       }
     } catch (err) {
       if (err.response?.status === 422) {
@@ -229,21 +267,102 @@ const UserProfile = () => {
     }
   };
 
+  const handleCancelBooking = async (booking) => {
+    setSelectedBooking(booking);
+    setShowConfirmModal(true);
+  };
+
+  const confirmCancel = async () => {
+    if (!selectedBooking) return;
+    
+    setCancelling(selectedBooking.id);
+    setError(null);
+    
+    try {
+      let response;
+      
+      if (selectedBooking.status === 'confirmed') {
+        response = await api.post(`/bookings/${selectedBooking.id}/refund`);
+      } else {
+        response = await api.patch(`/bookings/${selectedBooking.id}/cancel`);
+      }
+      
+      if (response.data.success) {
+        await loadUserBookings();
+        setShowConfirmModal(false);
+        setSelectedBooking(null);
+        alert(response.data.message);
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
+      setError(err.response?.data?.message || 'Failed to cancel booking');
+    } finally {
+      setCancelling(null);
+    }
+  };
+
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
   const formatTime = (time) => {
-    if (!time) return "";
-    const [hours, minutes] = time.split(":");
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
+    const ampm = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minutes} ${ampm}`;
+  };
+
+  const formatDateTime = (dateTime) => {
+    return new Date(dateTime).toLocaleString();
+  };
+
+  const getStatusBadge = (booking) => {
+    if (booking.status === 'cancelled') {
+      if (booking.refund_status === 'completed') {
+        return <span className="status-badge refunded">Refunded</span>;
+      }
+      return <span className="status-badge cancelled">Cancelled</span>;
+    }
+    if (booking.is_past) {
+      return <span className="status-badge completed">Completed</span>;
+    }
+    return <span className="status-badge confirmed">Confirmed</span>;
+  };
+
+  const getRefundDisplay = (booking) => {
+    if (booking.status !== 'cancelled') return null;
+    
+    if (booking.refund_status === 'completed') {
+      return (
+        <div className="refund-info">
+          <span className="refund-label">Refund</span>
+          <span className="refund-amount">Rs. {booking.refund_amount} refunded</span>
+        </div>
+      );
+    }
+    if (booking.refund_status === 'pending') {
+      return (
+        <div className="refund-info pending">
+          <span className="refund-label">Refund</span>
+          <span className="refund-status-pending">Processing</span>
+        </div>
+      );
+    }
+    if (booking.refund_status === 'failed') {
+      return (
+        <div className="refund-info failed">
+          <span className="refund-label">Refund</span>
+          <span className="refund-status-failed">Failed - Contact support</span>
+        </div>
+      );
+    }
+    return null;
   };
 
   if (!user) {
@@ -271,18 +390,28 @@ const UserProfile = () => {
           {successMsg && <div className="msg msg-success">{successMsg}</div>}
 
           <div className="profile-tabs">
-            <button className={`tab-btn ${activeTab === "profile" ? "active" : ""}`} onClick={() => setActiveTab("profile")}>
+            <button 
+              className={`tab-btn ${activeTab === "profile" ? "active" : ""}`} 
+              onClick={() => handleTabChange("profile")}
+            >
               Profile Info
             </button>
-            <button className={`tab-btn ${activeTab === "password" ? "active" : ""}`} onClick={() => setActiveTab("password")}>
+            <button 
+              className={`tab-btn ${activeTab === "password" ? "active" : ""}`} 
+              onClick={() => handleTabChange("password")}
+            >
               Change Password
             </button>
-            <button className={`tab-btn ${activeTab === "bookings" ? "active" : ""}`} onClick={() => setActiveTab("bookings")}>
+            <button 
+              className={`tab-btn ${activeTab === "bookings" ? "active" : ""}`} 
+              onClick={() => handleTabChange("bookings")}
+            >
               My Bookings
             </button>
           </div>
 
           <div className="profile-content">
+            {/* Profile Info Tab */}
             {activeTab === "profile" && (
               <div className="profile-card">
                 <div className="avatar-section">
@@ -310,19 +439,34 @@ const UserProfile = () => {
                 <form onSubmit={handleProfileUpdate} className="profile-form">
                   <div className="form-group">
                     <label>Full Name</label>
-                    <input type="text" value={profileForm.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className={formErrors.name ? "error" : ""} />
+                    <input 
+                      type="text" 
+                      value={profileForm.name} 
+                      onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} 
+                      className={formErrors.name ? "error" : ""} 
+                    />
                     {formErrors.name && <span className="error-text">{formErrors.name}</span>}
                   </div>
 
                   <div className="form-group">
                     <label>Email Address</label>
-                    <input type="email" value={profileForm.email} onChange={(e) => setProfileForm({...profileForm, email: e.target.value})} className={formErrors.email ? "error" : ""} />
+                    <input 
+                      type="email" 
+                      value={profileForm.email} 
+                      onChange={(e) => setProfileForm({...profileForm, email: e.target.value})} 
+                      className={formErrors.email ? "error" : ""} 
+                    />
                     {formErrors.email && <span className="error-text">{formErrors.email}</span>}
                   </div>
 
                   <div className="form-group">
                     <label>Phone Number</label>
-                    <input type="tel" value={profileForm.phone} onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})} className={formErrors.phone ? "error" : ""} />
+                    <input 
+                      type="tel" 
+                      value={profileForm.phone} 
+                      onChange={(e) => setProfileForm({...profileForm, phone: e.target.value})} 
+                      className={formErrors.phone ? "error" : ""} 
+                    />
                     {formErrors.phone && <span className="error-text">{formErrors.phone}</span>}
                   </div>
 
@@ -333,25 +477,41 @@ const UserProfile = () => {
               </div>
             )}
 
+            {/* Change Password Tab */}
             {activeTab === "password" && (
               <div className="profile-card">
                 <h3>Change Password</h3>
                 <form onSubmit={handlePasswordChange} className="profile-form">
                   <div className="form-group">
                     <label>Current Password</label>
-                    <input type="password" value={passwordForm.current_password} onChange={(e) => setPasswordForm({...passwordForm, current_password: e.target.value})} className={formErrors.current_password ? "error" : ""} />
+                    <input 
+                      type="password" 
+                      value={passwordForm.current_password} 
+                      onChange={(e) => setPasswordForm({...passwordForm, current_password: e.target.value})} 
+                      className={formErrors.current_password ? "error" : ""} 
+                    />
                     {formErrors.current_password && <span className="error-text">{formErrors.current_password}</span>}
                   </div>
 
                   <div className="form-group">
                     <label>New Password</label>
-                    <input type="password" value={passwordForm.new_password} onChange={(e) => setPasswordForm({...passwordForm, new_password: e.target.value})} className={formErrors.new_password ? "error" : ""} />
+                    <input 
+                      type="password" 
+                      value={passwordForm.new_password} 
+                      onChange={(e) => setPasswordForm({...passwordForm, new_password: e.target.value})} 
+                      className={formErrors.new_password ? "error" : ""} 
+                    />
                     {formErrors.new_password && <span className="error-text">{formErrors.new_password}</span>}
                   </div>
 
                   <div className="form-group">
-                    <label>Confirm Password</label>
-                    <input type="password" value={passwordForm.new_password_confirmation} onChange={(e) => setPasswordForm({...passwordForm, new_password_confirmation: e.target.value})} className={formErrors.new_password_confirmation ? "error" : ""} />
+                    <label>Confirm New Password</label>
+                    <input 
+                      type="password" 
+                      value={passwordForm.new_password_confirmation} 
+                      onChange={(e) => setPasswordForm({...passwordForm, new_password_confirmation: e.target.value})} 
+                      className={formErrors.new_password_confirmation ? "error" : ""} 
+                    />
                     {formErrors.new_password_confirmation && <span className="error-text">{formErrors.new_password_confirmation}</span>}
                   </div>
 
@@ -362,26 +522,69 @@ const UserProfile = () => {
               </div>
             )}
 
+            {/* My Bookings Tab - Card Layout */}
             {activeTab === "bookings" && (
-              <div className="profile-card">
-                <h3>My Bookings</h3>
+              <div className="bookings-container">
                 {bookingsLoading ? (
-                  <p className="loading-text">Loading bookings...</p>
+                  <div className="loading-container">Loading your bookings...</div>
                 ) : bookings.length === 0 ? (
-                  <p className="empty-text">No bookings found.</p>
+                  <div className="empty-state">
+                    <p>No bookings found.</p>
+                    <button className="btn-primary" onClick={() => navigate('/futsals')}>
+                      Browse Futsals
+                    </button>
+                  </div>
                 ) : (
-                  <div className="bookings-list">
+                  <div className="bookings-grid">
                     {bookings.map((booking) => (
-                      <div key={booking.id} className="booking-item">
+                      <div key={booking.id} className="booking-card">
                         <div className="booking-header">
-                          <h4>{booking.futsal_name}</h4>
-                          <span className={`status-badge ${booking.status}`}>{booking.status}</span>
+                          <div>
+                            <h3>{booking.futsal_name}</h3>
+                            <p className="location">{booking.location}</p>
+                          </div>
+                          {getStatusBadge(booking)}
                         </div>
+
                         <div className="booking-details">
-                          <p><strong>Date:</strong> {formatDate(booking.booking_date)}</p>
-                          <p><strong>Time:</strong> {formatTime(booking.start_time)} - {formatTime(booking.end_time)}</p>
-                          <p><strong>Price:</strong> Rs. {booking.price}</p>
-                          <p><strong>Payment:</strong> <span className={`payment-status ${booking.payment_status}`}>{booking.payment_status}</span></p>
+                          <div className="detail-item">
+                            <span className="detail-label">Date</span>
+                            <span className="detail-value">{formatDate(booking.slot_date)}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Time</span>
+                            <span className="detail-value">{formatTime(booking.start_time)} - {formatTime(booking.end_time)}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Price</span>
+                            <span className="detail-value price">Rs. {booking.price}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Payment</span>
+                            <span className="payment-status paid">Paid</span>
+                          </div>
+                          
+                          {getRefundDisplay(booking)}
+                        
+                        </div>
+
+                        <div className="booking-actions">
+                          {booking.status === 'confirmed' && !booking.is_past && booking.can_cancel && (
+                            <button 
+                              className="btn-cancel"
+                              onClick={() => handleCancelBooking(booking)}
+                              disabled={cancelling === booking.id}
+                            >
+                              {cancelling === booking.id ? "Processing..." : "Cancel Booking"}
+                            </button>
+                          )}
+                          
+                          <button 
+                            className="btn-details"
+                            onClick={() => navigate(`/booking/${booking.id}`)}
+                          >
+                            View Details
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -393,6 +596,39 @@ const UserProfile = () => {
         </div>
       </main>
       <Footer />
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && selectedBooking && (
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Cancel Booking</h3>
+              <button className="modal-close" onClick={() => setShowConfirmModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p>Are you sure you want to cancel this booking?</p>
+              <div className="booking-summary">
+                <p><strong>{selectedBooking.futsal_name}</strong></p>
+                <p>{formatDate(selectedBooking.slot_date)} | {formatTime(selectedBooking.start_time)} - {formatTime(selectedBooking.end_time)}</p>
+                <p>Amount: Rs. {selectedBooking.price}</p>
+              </div>
+              {selectedBooking.status === 'confirmed' && (
+                <div className="refund-info">
+                  Refund of Rs. {selectedBooking.price}.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowConfirmModal(false)}>
+                No, Keep It
+              </button>
+              <button className="btn-danger" onClick={confirmCancel} disabled={cancelling === selectedBooking.id}>
+                {cancelling === selectedBooking.id ? 'Processing...' : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

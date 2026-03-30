@@ -97,7 +97,6 @@ const BookingDetails = () => {
 
           <div className="detail-section">
             <h3>Booking Information</h3>
-            <p><strong>Booking ID:</strong> #{booking.id}</p>
             <p><strong>Date:</strong> {formatDate(booking.booking_date)}</p>
             <p><strong>Time:</strong> {formatTime(booking.start_time)} - {formatTime(booking.end_time)}</p>
             <p><strong>Price:</strong> Rs. {booking.price}</p>
