@@ -17,6 +17,12 @@ class Futsal extends Model
         'image',
         'manager_id',
         'active',
+        'restricted_users'
+    ];
+
+    protected $casts = [
+        'restricted_users' => 'array',  // This will automatically decode JSON to array
+        'active' => 'boolean',
     ];
 
     public function manager()

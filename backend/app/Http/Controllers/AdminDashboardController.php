@@ -200,83 +200,259 @@ class AdminDashboardController extends Controller
         }
     }
 
+
+
+
+// Update getUserBookings to check restriction status
+public function getUserBookings($futsal, $userId)
+{
+    try {
+        Log::info('getUserBookings called', ['futsal' => $futsal, 'userId' => $userId]);
+        
+        // Get user's recent bookings ONLY for this specific futsal
+        $bookings = DB::table('bookings')
+            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+            ->where('futsal_slots.futsal_id', $futsal)
+            ->where('bookings.user_id', $userId)
+            ->select(
+                'bookings.id',
+                'bookings.status',
+                'bookings.payment_status',
+                'bookings.refund_status',
+                'bookings.refund_amount',
+                'futsal_slots.slot_date',
+                'futsal_slots.price',
+                DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
+            )
+            ->orderBy('bookings.created_at', 'desc')
+            ->limit(5)
+            ->get();
+        
+        Log::info('Bookings found', ['count' => $bookings->count()]);
+        
+        // Get user statistics for THIS futsal only
+        $allUserBookings = DB::table('bookings')
+            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+            ->where('futsal_slots.futsal_id', $futsal)
+            ->where('bookings.user_id', $userId)
+            ->select('bookings.status', 'bookings.payment_status', 'bookings.refund_status', 'futsal_slots.price')
+            ->get();
+        
+        // Check if user is restricted from this specific futsal
+        $isRestricted = $this->isUserRestricted($futsal, $userId);
+        
+        $stats = [
+            'total_bookings' => $allUserBookings->count(),
+            'confirmed' => $allUserBookings->where('status', 'confirmed')->count(),
+            'cancelled' => $allUserBookings->where('status', 'cancelled')->count(),
+            'pending' => $allUserBookings->where('status', 'pending')->count(),
+            'total_spent' => $allUserBookings->where('status', 'confirmed')->sum('price'),
+            'total_refunded' => $allUserBookings->where('refund_status', 'completed')->sum('price'),
+            'is_restricted' => $isRestricted
+        ];
+        
+        return response()->json([
+            'bookings' => $bookings,
+            'stats' => $stats
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error fetching user bookings: ' . $e->getMessage());
+        Log::error($e->getTraceAsString());
+        return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
+    }
+}
+
+// Restrict user from booking at futsal
+public function restrictUser($futsal, $userId)
+{
+    try {
+        // Get current restricted users
+        $futsalData = DB::table('futsals')
+            ->where('id', $futsal)
+            ->select('restricted_users')
+            ->first();
+        
+        $restrictedUsers = [];
+        if ($futsalData && $futsalData->restricted_users) {
+            $restrictedUsers = json_decode($futsalData->restricted_users, true) ?: [];
+        }
+        
+        // Add user if not already restricted
+        if (!in_array($userId, $restrictedUsers)) {
+            $restrictedUsers[] = (int)$userId;
+        }
+        
+        // Update the futsal record
+        DB::table('futsals')
+            ->where('id', $futsal)
+            ->update([
+                'restricted_users' => json_encode($restrictedUsers),
+                'updated_at' => now()
+            ]);
+        
+        return response()->json(['success' => true, 'message' => 'User restricted successfully']);
+        
+    } catch (\Exception $e) {
+        Log::error('Error restricting user: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to restrict user: ' . $e->getMessage()], 500);
+    }
+}
+
+// Unrestrict user - remove from restriction list
+public function unrestrictUser($futsal, $userId)
+{
+    try {
+        // Get current restricted users
+        $futsalData = DB::table('futsals')
+            ->where('id', $futsal)
+            ->select('restricted_users')
+            ->first();
+        
+        $restrictedUsers = [];
+        if ($futsalData && $futsalData->restricted_users) {
+            $restrictedUsers = json_decode($futsalData->restricted_users, true) ?: [];
+        }
+        
+        // Remove user from array
+        $restrictedUsers = array_filter($restrictedUsers, function($id) use ($userId) {
+            return $id != $userId;
+        });
+        
+        // Update the futsal record
+        DB::table('futsals')
+            ->where('id', $futsal)
+            ->update([
+                'restricted_users' => json_encode(array_values($restrictedUsers)),
+                'updated_at' => now()
+            ]);
+        
+        return response()->json(['success' => true, 'message' => 'User unrestricted successfully']);
+        
+    } catch (\Exception $e) {
+        Log::error('Error unrestricting user: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to unrestrict user: ' . $e->getMessage()], 500);
+    }
+}
+
+// Check if user is restricted (add this helper method)
+private function isUserRestricted($futsal, $userId)
+{
+    $futsalData = DB::table('futsals')
+        ->where('id', $futsal)
+        ->select('restricted_users')
+        ->first();
+    
+    if ($futsalData && $futsalData->restricted_users) {
+        $restrictedUsers = json_decode($futsalData->restricted_users, true) ?: [];
+        return in_array($userId, $restrictedUsers);
+    }
+    
+    return false;
+}
+
     // =============================================
-    // FUTSAL SETTINGS (NEW)
+    // FUTSAL SETTINGS 
     // =============================================
     
     public function getSettings($futsal): JsonResponse
-    {
-        try {
-            $settings = DB::table('futsal_settings')
-                ->where('futsal_id', $futsal)
-                ->first();
-            
-            if (!$settings) {
-                return response()->json([
-                    'open_time' => '06:00',
-                    'close_time' => '22:00',
-                    'slot_duration' => 60,
-                    'break_time' => 15,
-                    'default_price' => 1500
-                ]);
-            }
-            
-            return response()->json($settings);
-        } catch (\Exception $e) {
-            Log::error('Error fetching settings: ' . $e->getMessage());
+{
+    try {
+        $settings = DB::table('futsal_settings')
+            ->where('futsal_id', $futsal)
+            ->first();
+        
+        if (!$settings) {
             return response()->json([
                 'open_time' => '06:00',
                 'close_time' => '22:00',
                 'slot_duration' => 60,
-                'break_time' => 15,
-                'default_price' => 1500
+                // 'break_time' => 0, // REMOVE THIS
+                'default_price' => 1500,
+                'peak_morning_start' => '06:00',
+                'peak_morning_end' => '09:00',
+                'peak_evening_start' => '17:00',
+                'peak_evening_end' => '21:00',
+                'peak_price_multiplier' => 1.30,
+                'off_peak_price_multiplier' => 1.00
             ]);
         }
+        
+        return response()->json($settings);
+    } catch (\Exception $e) {
+        Log::error('Error fetching settings: ' . $e->getMessage());
+        return response()->json([
+            'open_time' => '06:00',
+            'close_time' => '22:00',
+            'slot_duration' => 60,
+            // 'break_time' => 0, // REMOVE THIS
+            'default_price' => 1500,
+            'peak_morning_start' => '06:00',
+            'peak_morning_end' => '09:00',
+            'peak_evening_start' => '17:00',
+            'peak_evening_end' => '21:00',
+            'peak_price_multiplier' => 1.30,
+            'off_peak_price_multiplier' => 1.00
+        ]);
     }
-    
+}
+
     public function saveSettings(Request $request, $futsal): JsonResponse
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'open_time' => 'required|date_format:H:i',
-                'close_time' => 'required|date_format:H:i|after:open_time',
-                'slot_duration' => 'required|integer|min:30|max:180',
-                'break_time' => 'required|integer|min:0|max:60',
-                'default_price' => 'required|numeric|min:0',
-            ]);
-            
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-            
-            DB::table('futsal_settings')->updateOrInsert(
-                ['futsal_id' => $futsal],
-                [
-                    'open_time' => $request->open_time,
-                    'close_time' => $request->close_time,
-                    'slot_duration' => $request->slot_duration,
-                    'break_time' => $request->break_time,
-                    'default_price' => $request->default_price,
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Settings saved successfully'
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error saving settings: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
+{
+    try {
+        $validator = Validator::make($request->all(), [
+            'open_time' => 'required|date_format:H:i',
+            'close_time' => 'required|date_format:H:i|after:open_time',
+            'slot_duration' => 'required|integer|min:30|max:180',
+            'default_price' => 'required|numeric|min:0',
+            'peak_morning_start' => 'nullable|date_format:H:i',
+            'peak_morning_end' => 'nullable|date_format:H:i',
+            'peak_evening_start' => 'nullable|date_format:H:i',
+            'peak_evening_end' => 'nullable|date_format:H:i',
+            'peak_price_multiplier' => 'nullable|numeric|min:0.50|max:2.00',
+            'off_peak_price_multiplier' => 'nullable|numeric|min:0.50|max:1.00'
+        ]);
+        
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
         }
+        
+        // Remove break_time from the update array
+        DB::table('futsal_settings')->updateOrInsert(
+            ['futsal_id' => $futsal],
+            [
+                'open_time' => $request->open_time,
+                'close_time' => $request->close_time,
+                'slot_duration' => $request->slot_duration,
+                // 'break_time' => 0, // REMOVE THIS LINE - column doesn't exist
+                'default_price' => $request->default_price,
+                'peak_morning_start' => $request->peak_morning_start ?? null,
+                'peak_morning_end' => $request->peak_morning_end ?? null,
+                'peak_evening_start' => $request->peak_evening_start ?? null,
+                'peak_evening_end' => $request->peak_evening_end ?? null,
+                'peak_price_multiplier' => $request->peak_price_multiplier ?? 1.30,
+                'off_peak_price_multiplier' => $request->off_peak_price_multiplier ?? 1.00,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Settings saved successfully'
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Error saving settings: ' . $e->getMessage());
+        return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
     }
+}
     
     // =============================================
-    // BULK SLOT GENERATION (NEW)
+    // SLOT GENERATION (NO BREAK TIME)
     // =============================================
     
-    private function calculateTimeSlots($openTime, $closeTime, $slotDuration, $breakTime)
+    private function calculateTimeSlots($openTime, $closeTime, $slotDuration)
     {
         $slots = [];
         $current = Carbon::parse($openTime);
@@ -290,13 +466,47 @@ class AdminDashboardController extends Controller
                     'start_time' => $current->format('H:i:s'),
                     'end_time' => $slotEnd->format('H:i:s'),
                 ];
-                $current->addMinutes($slotDuration + $breakTime);
+                $current = $slotEnd;
             } else {
                 break;
             }
         }
         
         return $slots;
+    }
+
+    private function calculateSlotPrice($startTime, $settings)
+    {
+        $startTimeFormatted = substr($startTime, 0, 5); // Convert H:i:s to H:i
+        $basePrice = $settings->default_price;
+        
+        // Check if time falls in morning peak
+        $isMorningPeak = false;
+        if ($settings->peak_morning_start && $settings->peak_morning_end) {
+            $isMorningPeak = $startTimeFormatted >= $settings->peak_morning_start && 
+                             $startTimeFormatted < $settings->peak_morning_end;
+        }
+        
+        // Check if time falls in evening peak
+        $isEveningPeak = false;
+        if ($settings->peak_evening_start && $settings->peak_evening_end) {
+            $isEveningPeak = $startTimeFormatted >= $settings->peak_evening_start && 
+                             $startTimeFormatted < $settings->peak_evening_end;
+        }
+        
+        if ($isMorningPeak || $isEveningPeak) {
+            $price = $basePrice * $settings->peak_price_multiplier;
+            $priceType = 'peak';
+        } else {
+            $price = $basePrice * $settings->off_peak_price_multiplier;
+            $priceType = 'off_peak';
+        }
+        
+        return [
+            'price' => round($price, 2),
+            'price_type' => $priceType,
+            'original_price' => $basePrice
+        ];
     }
     
     public function generateSlots(Request $request, $futsal): JsonResponse
@@ -317,13 +527,12 @@ class AdminDashboardController extends Controller
             }
             
             $slotDate = $request->slot_date;
-            $price = $request->price ?? $settings->default_price;
+            $customPrice = $request->price;
             
             $timeSlots = $this->calculateTimeSlots(
                 $settings->open_time,
                 $settings->close_time,
-                $settings->slot_duration,
-                $settings->break_time
+                $settings->slot_duration
             );
             
             $createdSlots = [];
@@ -333,6 +542,18 @@ class AdminDashboardController extends Controller
             
             try {
                 foreach ($timeSlots as $slot) {
+                    // Calculate price based on time of day
+                    if ($customPrice) {
+                        $price = $customPrice;
+                        $priceType = 'custom';
+                        $originalPrice = null;
+                    } else {
+                        $priceData = $this->calculateSlotPrice($slot['start_time'], $settings);
+                        $price = $priceData['price'];
+                        $priceType = $priceData['price_type'];
+                        $originalPrice = $priceData['original_price'];
+                    }
+                    
                     $timeSlot = DB::table('time_slots')
                         ->where('start_time', $slot['start_time'])
                         ->where('end_time', $slot['end_time'])
@@ -364,6 +585,8 @@ class AdminDashboardController extends Controller
                         'futsal_id' => $futsal,
                         'slot_id' => $timeSlotId,
                         'price' => $price,
+                        'price_type' => $priceType,
+                        'original_price' => $originalPrice,
                         'slot_date' => $slotDate,
                         'is_available' => true,
                         'created_at' => now(),
@@ -375,16 +598,25 @@ class AdminDashboardController extends Controller
                         'start_time' => $slot['start_time'],
                         'end_time' => $slot['end_time'],
                         'price' => $price,
+                        'price_type' => $priceType,
                         'slot_date' => $slotDate,
                     ];
                 }
                 
                 DB::commit();
                 
+                $peakCount = count(array_filter($createdSlots, fn($s) => $s['price_type'] === 'peak'));
+                $offPeakCount = count(array_filter($createdSlots, fn($s) => $s['price_type'] === 'off_peak'));
+                
                 return response()->json([
                     'success' => true,
                     'message' => "Generated " . count($createdSlots) . " slots for " . $slotDate,
-                    'data' => $createdSlots
+                    'data' => [
+                        'total' => count($createdSlots),
+                        'peak_slots' => $peakCount,
+                        'off_peak_slots' => $offPeakCount,
+                        'slots' => $createdSlots
+                    ]
                 ]);
                 
             } catch (\Exception $e) {
@@ -420,18 +652,19 @@ class AdminDashboardController extends Controller
             
             $startDate = Carbon::parse($request->start_date);
             $endDate = Carbon::parse($request->end_date);
-            $price = $request->price ?? $settings->default_price;
+            $customPrice = $request->price;
             $daysOfWeek = $request->days_of_week ?? [0,1,2,3,4,5,6];
             
             $timeSlots = $this->calculateTimeSlots(
                 $settings->open_time,
                 $settings->close_time,
-                $settings->slot_duration,
-                $settings->break_time
+                $settings->slot_duration
             );
             
             $createdCount = 0;
             $skippedCount = 0;
+            $peakCount = 0;
+            $offPeakCount = 0;
             
             DB::beginTransaction();
             
@@ -441,6 +674,18 @@ class AdminDashboardController extends Controller
                 while ($currentDate->lte($endDate)) {
                     if (in_array($currentDate->dayOfWeek, $daysOfWeek)) {
                         foreach ($timeSlots as $slot) {
+                            // Calculate price based on time of day
+                            if ($customPrice) {
+                                $price = $customPrice;
+                                $priceType = 'custom';
+                                $originalPrice = null;
+                            } else {
+                                $priceData = $this->calculateSlotPrice($slot['start_time'], $settings);
+                                $price = $priceData['price'];
+                                $priceType = $priceData['price_type'];
+                                $originalPrice = $priceData['original_price'];
+                            }
+                            
                             $timeSlot = DB::table('time_slots')
                                 ->where('start_time', $slot['start_time'])
                                 ->where('end_time', $slot['end_time'])
@@ -472,6 +717,8 @@ class AdminDashboardController extends Controller
                                 'futsal_id' => $futsal,
                                 'slot_id' => $timeSlotId,
                                 'price' => $price,
+                                'price_type' => $priceType,
+                                'original_price' => $originalPrice,
                                 'slot_date' => $currentDate->toDateString(),
                                 'is_available' => true,
                                 'created_at' => now(),
@@ -479,6 +726,8 @@ class AdminDashboardController extends Controller
                             ]);
                             
                             $createdCount++;
+                            if ($priceType === 'peak') $peakCount++;
+                            else $offPeakCount++;
                         }
                     }
                     $currentDate->addDay();
@@ -491,7 +740,9 @@ class AdminDashboardController extends Controller
                     'message' => "Generated $createdCount new slots from " . $startDate->format('Y-m-d') . " to " . $endDate->format('Y-m-d'),
                     'data' => [
                         'created' => $createdCount,
-                        'skipped' => $skippedCount
+                        'skipped' => $skippedCount,
+                        'peak_slots' => $peakCount,
+                        'off_peak_slots' => $offPeakCount
                     ]
                 ]);
                 
@@ -750,59 +1001,45 @@ class AdminDashboardController extends Controller
     }
 
     // =============================================
-    // BOOKINGS - ADMIN VIEW ONLY
+    // BOOKINGS - ADMIN VIEW
     // =============================================
     public function bookings($futsal): JsonResponse
-{
-    try {
-        $bookings = DB::table('bookings')
-            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
-            ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-            ->where('futsal_slots.futsal_id', $futsal)
-            ->select(
-                'bookings.id',
-                'bookings.user_id',
-                'bookings.futsal_slot_id',
-                'bookings.booking_date',
-                'bookings.status',
-                'bookings.payment_status',
-                'bookings.refund_status',
-                'bookings.refund_amount',
-                'bookings.refunded_at',
-                'bookings.created_at',
-                'bookings.updated_at',
-                'users.name as user_name',
-                'users.email as user_email',
-                'users.phone as user_phone',
-                DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time"),
-                'futsal_slots.slot_date',
-                'futsal_slots.price'
-            )
-            ->orderBy('bookings.id', 'desc')
-            ->get();
+    {
+        try {
+            $bookings = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select(
+                    'bookings.id',
+                    'bookings.user_id',
+                    'bookings.futsal_slot_id',
+                    'bookings.booking_date',
+                    'bookings.status',
+                    'bookings.payment_status',
+                    'bookings.refund_status',
+                    'bookings.refund_amount',
+                    'bookings.refunded_at',
+                    'bookings.created_at',
+                    'bookings.updated_at',
+                    'users.name as user_name',
+                    'users.email as user_email',
+                    'users.phone as user_phone',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time"),
+                    'futsal_slots.slot_date',
+                    'futsal_slots.price'
+                )
+                ->orderBy('bookings.id', 'desc')
+                ->get();
 
-        // Log ALL cancelled bookings for debugging
-        $cancelledBookings = $bookings->where('status', 'cancelled');
-        Log::info('Cancelled bookings for admin', [
-            'count' => $cancelledBookings->count(),
-            'bookings' => $cancelledBookings->map(function($b) {
-                return [
-                    'id' => $b->id,
-                    'refund_status' => $b->refund_status,
-                    'refund_amount' => $b->refund_amount,
-                    'refunded_at' => $b->refunded_at
-                ];
-            })
-        ]);
-
-        return response()->json($bookings);
-        
-    } catch (\Exception $e) {
-        Log::error('Error fetching bookings: ' . $e->getMessage());
-        return response()->json(['error' => 'Internal server error'], 500);
+            return response()->json($bookings);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching bookings: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
     }
-}
 
     public function updateBookingStatus(Request $request, $futsal, $id): JsonResponse
     {
@@ -836,136 +1073,134 @@ class AdminDashboardController extends Controller
     }
 
     // =============================================
-// PAYMENTS - UPDATED WITH REFUND DATA
-// =============================================
-public function payments($futsal): JsonResponse
-{
-    try {
-        $payments = DB::table('payments')
-            ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
-            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
-            ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-            ->where('futsal_slots.futsal_id', $futsal)
-            ->select(
-                'payments.id',
-                'payments.booking_id',
-                'payments.amount',
-                'payments.payment_method',
-                'payments.transaction_id',
-                'payments.payment_date',
-                'payments.created_at',
-                'bookings.refund_status',        // Add refund status
-                'bookings.refund_amount',        // Add refund amount
-                'bookings.refunded_at',          // Add refund date
-                'bookings.status as booking_status', // Add booking status
-                'users.name as user_name',
-                'bookings.booking_date',
-                DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
-            )
-            ->orderBy('payments.id', 'desc')
-            ->get();
+    // PAYMENTS WITH REFUND DATA
+    // =============================================
+    public function payments($futsal): JsonResponse
+    {
+        try {
+            $payments = DB::table('payments')
+                ->join('bookings', 'payments.booking_id', '=', 'bookings.id')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->where('futsal_slots.futsal_id', $futsal)
+                ->select(
+                    'payments.id',
+                    'payments.booking_id',
+                    'payments.amount',
+                    'payments.payment_method',
+                    'payments.transaction_id',
+                    'payments.payment_date',
+                    'payments.created_at',
+                    'bookings.refund_status',
+                    'bookings.refund_amount',
+                    'bookings.refunded_at',
+                    'bookings.status as booking_status',
+                    'users.name as user_name',
+                    'bookings.booking_date',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
+                )
+                ->orderBy('payments.id', 'desc')
+                ->get();
 
-        return response()->json($payments);
-        
-    } catch (\Exception $e) {
-        Log::error('Error fetching payments: ' . $e->getMessage());
-        return response()->json(['error' => 'Internal server error'], 500);
+            return response()->json($payments);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching payments: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
     }
-}
 
     // =============================================
-// REPORTS - UPDATED WITH REFUND DATA
-// =============================================
-public function reports(Request $request, $futsal): JsonResponse
-{
-    try {
-        $date = $request->date;
-        $period = $request->period ?? 'daily';
+    // REPORTS WITH REFUND DATA
+    // =============================================
+    public function reports(Request $request, $futsal): JsonResponse
+    {
+        try {
+            $date = $request->date;
+            $period = $request->period ?? 'daily';
 
-        $baseQuery = DB::table('bookings')
-            ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
-            ->where('futsal_slots.futsal_id', $futsal);
+            $baseQuery = DB::table('bookings')
+                ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
+                ->where('futsal_slots.futsal_id', $futsal);
 
-        if ($date) {
-            if ($period === 'daily') {
-                $baseQuery->whereDate('bookings.booking_date', $date);
-            } elseif ($period === 'weekly') {
-                $start = date('Y-m-d', strtotime($date . ' -6 days'));
-                $baseQuery->whereBetween('bookings.booking_date', [$start, $date]);
-            } elseif ($period === 'monthly') {
-                $year = date('Y', strtotime($date));
-                $month = date('m', strtotime($date));
-                $baseQuery->whereYear('bookings.booking_date', $year)
-                          ->whereMonth('bookings.booking_date', $month);
+            if ($date) {
+                if ($period === 'daily') {
+                    $baseQuery->whereDate('bookings.booking_date', $date);
+                } elseif ($period === 'weekly') {
+                    $start = date('Y-m-d', strtotime($date . ' -6 days'));
+                    $baseQuery->whereBetween('bookings.booking_date', [$start, $date]);
+                } elseif ($period === 'monthly') {
+                    $year = date('Y', strtotime($date));
+                    $month = date('m', strtotime($date));
+                    $baseQuery->whereYear('bookings.booking_date', $year)
+                              ->whereMonth('bookings.booking_date', $month);
+                }
             }
+
+            $totalBookings = $baseQuery->count();
+            $confirmedBookings = (clone $baseQuery)->where('bookings.status', 'confirmed')->count();
+            $cancelledBookings = (clone $baseQuery)->where('bookings.status', 'cancelled')->count();
+            $pendingBookings = (clone $baseQuery)->where('bookings.status', 'pending')->count();
+            
+            $totalRevenue = (clone $baseQuery)
+                ->where('bookings.payment_status', 'paid')
+                ->where(function($q) {
+                    $q->where('bookings.status', 'confirmed')
+                      ->orWhere(function($q2) {
+                          $q2->where('bookings.status', 'cancelled')
+                             ->where('bookings.refund_status', 'completed');
+                      });
+                })
+                ->sum('futsal_slots.price');
+            
+            $refundedAmount = (clone $baseQuery)
+                ->where('bookings.status', 'cancelled')
+                ->where('bookings.refund_status', 'completed')
+                ->sum('bookings.refund_amount');
+            
+            $pendingRefunds = (clone $baseQuery)
+                ->where('bookings.status', 'cancelled')
+                ->where('bookings.refund_status', 'pending')
+                ->count();
+            
+            $failedRefunds = (clone $baseQuery)
+                ->where('bookings.status', 'cancelled')
+                ->where('bookings.refund_status', 'failed')
+                ->count();
+
+            $recentBookings = (clone $baseQuery)
+                ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
+                ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
+                ->orderBy('bookings.id', 'desc')
+                ->limit(50)
+                ->select(
+                    'bookings.id',
+                    'bookings.booking_date',
+                    'bookings.status',
+                    'bookings.payment_status',
+                    'bookings.refund_status',
+                    'bookings.refund_amount',
+                    'users.name as user_name',
+                    DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
+                )
+                ->get();
+
+            return response()->json([
+                'total_bookings' => $totalBookings,
+                'confirmed' => $confirmedBookings,
+                'cancelled' => $cancelledBookings,
+                'pending' => $pendingBookings,
+                'revenue' => $totalRevenue,
+                'refunded_amount' => $refundedAmount,
+                'pending_refunds' => $pendingRefunds,
+                'failed_refunds' => $failedRefunds,
+                'bookings' => $recentBookings,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error generating report: ' . $e->getMessage());
+            return response()->json(['error' => 'Internal server error'], 500);
         }
-
-        $totalBookings = $baseQuery->count();
-        $confirmedBookings = (clone $baseQuery)->where('bookings.status', 'confirmed')->count();
-        $cancelledBookings = (clone $baseQuery)->where('bookings.status', 'cancelled')->count();
-        $pendingBookings = (clone $baseQuery)->where('bookings.status', 'pending')->count();
-        
-        // Revenue calculation - only count paid bookings that are NOT cancelled OR cancelled with refund
-        $totalRevenue = (clone $baseQuery)
-            ->where('bookings.payment_status', 'paid')
-            ->where(function($q) {
-                $q->where('bookings.status', 'confirmed')
-                  ->orWhere(function($q2) {
-                      $q2->where('bookings.status', 'cancelled')
-                         ->where('bookings.refund_status', 'completed');
-                  });
-            })
-            ->sum('futsal_slots.price');
-        
-        // Refund statistics
-        $refundedAmount = (clone $baseQuery)
-            ->where('bookings.status', 'cancelled')
-            ->where('bookings.refund_status', 'completed')
-            ->sum('bookings.refund_amount');
-        
-        $pendingRefunds = (clone $baseQuery)
-            ->where('bookings.status', 'cancelled')
-            ->where('bookings.refund_status', 'pending')
-            ->count();
-        
-        $failedRefunds = (clone $baseQuery)
-            ->where('bookings.status', 'cancelled')
-            ->where('bookings.refund_status', 'failed')
-            ->count();
-
-        $recentBookings = (clone $baseQuery)
-            ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
-            ->leftJoin('users', 'bookings.user_id', '=', 'users.id')
-            ->orderBy('bookings.id', 'desc')
-            ->limit(50)
-            ->select(
-                'bookings.id',
-                'bookings.booking_date',
-                'bookings.status',
-                'bookings.payment_status',
-                'bookings.refund_status',
-                'bookings.refund_amount',
-                'users.name as user_name',
-                DB::raw("CONCAT(time_slots.start_time, ' - ', time_slots.end_time) as slot_time")
-            )
-            ->get();
-
-        return response()->json([
-            'total_bookings' => $totalBookings,
-            'confirmed' => $confirmedBookings,
-            'cancelled' => $cancelledBookings,
-            'pending' => $pendingBookings,
-            'revenue' => $totalRevenue,
-            'refunded_amount' => $refundedAmount,
-            'pending_refunds' => $pendingRefunds,
-            'failed_refunds' => $failedRefunds,
-            'bookings' => $recentBookings,
-        ]);
-        
-    } catch (\Exception $e) {
-        Log::error('Error generating report: ' . $e->getMessage());
-        return response()->json(['error' => 'Internal server error'], 500);
     }
-}
 }

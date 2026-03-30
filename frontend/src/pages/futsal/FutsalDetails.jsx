@@ -17,6 +17,8 @@ const FutsalDetails = () => {
   const [slotsByDate, setSlotsByDate] = useState([]);
   const [imageError, setImageError] = useState(false);
   const [bookingSlotId, setBookingSlotId] = useState(null);
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [restrictedMessage, setRestrictedMessage] = useState('');
 
   useEffect(() => {
     fetchFutsalDetails();
@@ -25,9 +27,17 @@ const FutsalDetails = () => {
   const fetchFutsalDetails = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem('access_token');
+      console.log('Fetching futsal details - Token exists:', !!token);
+      
       const response = await api.get(`/futsals/${id}`);
+      console.log('API Response:', response.data);
       if (response.data.success) {
         setFutsal(response.data.data);
+        
+       
+        setIsRestricted(response.data.data.is_restricted || false);
+        setRestrictedMessage(response.data.data.restricted_message || '');
         
         if (response.data.data.slots_by_date && response.data.data.slots_by_date.length > 0) {
           const dates = response.data.data.slots_by_date.map(item => item.date);
@@ -45,6 +55,12 @@ const FutsalDetails = () => {
 
   // DIRECT PAYMENT - No booking created
   const handleBookSlot = async (slot, date) => {
+    //RESTRICTION CHECK 
+    if (isRestricted) {
+      alert(restrictedMessage || "You have been restricted from booking at this futsal.");
+      return;
+    }
+    
     if (!isSlotValid(slot, date)) {
       alert("This slot has already passed and cannot be booked.");
       return;
@@ -66,7 +82,6 @@ const FutsalDetails = () => {
       });
 
       if (response.data.success) {
-        // Redirect to Khalti payment page
         window.location.href = response.data.payment_url;
       } else {
         alert(response.data.message || 'Payment initiation failed');
@@ -137,23 +152,39 @@ const FutsalDetails = () => {
           setImageError={setImageError} 
         />
 
-        <div className="booking-step">
-          <h2>Select Date & Time</h2>
-          
-          {availableDates.length > 0 ? (
-            <SlotSelector 
-              availableDates={availableDates}
-              slotsByDate={slotsByDate}
-              onBookSlot={handleBookSlot}
-              formatDate={formatDate}
-              formatTime={formatTime}
-              isSlotValid={isSlotValid}
-              bookingSlotId={bookingSlotId}
-            />
-          ) : (
-            <p className="no-slots">No available slots at the moment.</p>
-          )}
-        </div>
+        {/* ✅ ADD RESTRICTION WARNING */}
+        {isRestricted ? (
+          <div className="restricted-warning">
+            <div className="warning-icon">⚠️</div>
+            <h3>Booking Restricted</h3>
+            <p>{restrictedMessage || "You have been restricted from booking at this futsal. Please contact the administrator for more information."}</p>
+            <button 
+              className="back-btn"
+              onClick={() => navigate("/futsals")}
+              style={{ marginTop: '15px' }}
+            >
+              Browse Other Futsals
+            </button>
+          </div>
+        ) : (
+          <div className="booking-step">
+            <h2>Select Date & Time</h2>
+            
+            {availableDates.length > 0 ? (
+              <SlotSelector 
+                availableDates={availableDates}
+                slotsByDate={slotsByDate}
+                onBookSlot={handleBookSlot}
+                formatDate={formatDate}
+                formatTime={formatTime}
+                isSlotValid={isSlotValid}
+                bookingSlotId={bookingSlotId}
+              />
+            ) : (
+              <p className="no-slots">No available slots at the moment.</p>
+            )}
+          </div>
+        )}
       </main>
       <Footer />
     </div>

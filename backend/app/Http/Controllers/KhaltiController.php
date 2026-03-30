@@ -127,6 +127,8 @@ class KhaltiController extends Controller
                 ], 422);
             }
 
+            //pidx is the payment index or payment ID that Khalti generates when a payment is initiated. 
+
             // First, check if booking already exists for this transaction
             $existingPayment = DB::table('payments')
                 ->where('transaction_id', $request->pidx)

@@ -9,7 +9,6 @@ use App\Http\Controllers\SuperAdminController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\PasswordResetController;
-use Illuminate\Support\Facades\Mail;
 use App\Http\Controllers\KhaltiController;
 
 // PUBLIC ROUTES (No authentication required)
@@ -26,9 +25,6 @@ Route::get('/futsals/stats', [HomeController::class, 'getStats']);
 // Google OAuth Routes
 Route::get('/auth/google/redirect', [GoogleController::class, 'redirect'])->middleware('web');
 Route::get('/auth/google/callback', [GoogleController::class, 'callback'])->middleware('web');
-Route::get('/auth/google/test', [GoogleController::class, 'testConfig']);
-
-
 
 // Password reset routes
 Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword']);
@@ -40,6 +36,8 @@ Route::get('/futsals/locations', [FutsalController::class, 'getLocations']);
 Route::get('/futsals/{id}', [FutsalController::class, 'show']);
 Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
 
+
+
 // PROTECTED ROUTES (require authentication)
 Route::middleware('auth:sanctum')->group(function () {
     // USER ROUTES
@@ -50,17 +48,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/change-password', [UserController::class, 'changePassword']);
     Route::get('/user/bookings', [BookingController::class, 'getUserBookings']);
     
-    // BOOKING ROUTES (Simplified - Pay first, then book)
-    Route::post('/bookings', [BookingController::class, 'createBooking']); // Create booking after payment
-    Route::get('/bookings/{id}', [BookingController::class, 'show']); // Get booking details
-    Route::post('/bookings/{id}/refund', [BookingController::class, 'cancelBooking']); // Cancel with refund
+    // BOOKING ROUTES
+    Route::post('/bookings', [BookingController::class, 'createBooking']);
+    Route::get('/bookings/{id}', [BookingController::class, 'show']);
+    Route::post('/bookings/{id}/refund', [BookingController::class, 'cancelBooking']);
     Route::get('/payment/history', [BookingController::class, 'getPaymentHistory']);
 
     // KHALTI PAYMENT ROUTES
-    Route::post('/khalti/initiate', [KhaltiController::class, 'initiatePayment']);
-    Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
+Route::post('/khalti/initiate', [KhaltiController::class, 'initiatePayment']);
+Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
 
-    // ADMIN ROUTES (for futsal managers)
+    // ADMIN ROUTES
     Route::get('/admin/futsals/{futsal}', [AdminDashboardController::class, 'futsal']);
     Route::post('/admin/futsals/{futsal}/update', [AdminDashboardController::class, 'updateFutsal']);
     Route::post('/admin/futsals/{futsal}/image', [AdminDashboardController::class, 'uploadImage']);
@@ -78,6 +76,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/futsals/{futsal}/settings', [AdminDashboardController::class, 'saveSettings']);
     Route::post('/admin/futsals/{futsal}/generate-slots', [AdminDashboardController::class, 'generateSlots']);
     Route::post('/admin/futsals/{futsal}/bulk-generate-slots', [AdminDashboardController::class, 'bulkGenerateSlots']);
+
+    Route::get('/admin/futsals/{futsal}/users/{userId}/bookings', [AdminDashboardController::class, 'getUserBookings']);
+    Route::post('/admin/futsals/{futsal}/users/{userId}/restrict', [AdminDashboardController::class, 'restrictUser']);
+    Route::post('/admin/futsals/{futsal}/users/{userId}/unrestrict', [AdminDashboardController::class, 'unrestrictUser']);
 
     Route::get('/admin/futsals/{futsal}/bookings', [AdminDashboardController::class, 'bookings']);
     Route::get('/admin/futsals/{futsal}/users', [AdminDashboardController::class, 'users']);
@@ -118,28 +120,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/dashboard', [SuperAdminController::class, 'getDashboardData']);
         Route::get('/activity-logs', [SuperAdminController::class, 'getActivityLogs']);
     });
-});
-
-// CORS OPTIONS ROUTE
-Route::options('/{any}', function() {
-    return response()->json([], 200)
-        ->header('Access-Control-Allow-Origin', 'http://localhost:5173')
-        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-        ->header('Access-Control-Allow-Credentials', 'true');
-})->where('any', '.*');
-
-// TEST ROUTE FOR MAIL SENDING
-Route::get('/test-email', function() {
-    try {
-        Mail::raw('Test email from FutsalHub', function($message) {
-            $message->to('dipeshacharya6458@gmail.com')
-                    ->subject('Test Email');
-        });
-        return response()->json(['success' => true, 'message' => 'Email sent!']);
-    } catch (\Exception $e) {
-        return response()->json(['success' => false, 'error' => $e->getMessage()]);
-    }
 });
 
 // FALLBACK ROUTE

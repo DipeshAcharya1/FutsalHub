@@ -73,7 +73,7 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
           </div>
 
           <div className="form-group">
-            <label>Assign Manager (optional)</label>
+            <label>Assign Manager </label>
             <select
               value={futsalForm.manager_id}
               onChange={(e) => setFutsalForm({ ...futsalForm, manager_id: e.target.value })}

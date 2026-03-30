@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import api from "../../api/axios";
 import SuperAdminHeader from "./SuperAdminHeader";
@@ -14,6 +14,15 @@ import "../../styles/SuperAdminDashboard.css";
 
 const SuperAdminDashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get tab from URL or default to "stats"
+  const getTabFromUrl = () => {
+    const tabParam = searchParams.get('tab');
+    const validTabs = ['stats', 'futsals', 'admins', 'bookings', 'users'];
+    return tabParam && validTabs.includes(tabParam) ? tabParam : 'stats';
+  };
+
   const [futsals, setFutsals] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -22,7 +31,7 @@ const SuperAdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [tab, setTab] = useState("stats");
+  const [tab, setTab] = useState(getTabFromUrl);
   const [showFutsalModal, setShowFutsalModal] = useState(false);
   const [showFutsalDetailsModal, setShowFutsalDetailsModal] = useState(false);
   const [editingFutsal, setEditingFutsal] = useState(null);
@@ -50,6 +59,12 @@ const SuperAdminDashboard = () => {
     manager_id: "",
     image: null
   });
+
+  // Update URL when tab changes
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
@@ -324,20 +339,20 @@ const SuperAdminDashboard = () => {
           </div>
 
           <nav className="admin-nav">
-            <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>
-               Dashboard
+            <button className={tab === "stats" ? "active" : ""} onClick={() => handleTabChange("stats")}>
+              Dashboard
             </button>
-            <button className={tab === "futsals" ? "active" : ""} onClick={() => setTab("futsals")}>
-               Futsals
+            <button className={tab === "futsals" ? "active" : ""} onClick={() => handleTabChange("futsals")}>
+              Futsals
             </button>
-            <button className={tab === "admins" ? "active" : ""} onClick={() => setTab("admins")}>
-               Admins
+            <button className={tab === "admins" ? "active" : ""} onClick={() => handleTabChange("admins")}>
+              Admins
             </button>
-            <button className={tab === "bookings" ? "active" : ""} onClick={() => setTab("bookings")}>
-               Bookings
+            <button className={tab === "bookings" ? "active" : ""} onClick={() => handleTabChange("bookings")}>
+              Bookings
             </button>
-            <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
-               Users
+            <button className={tab === "users" ? "active" : ""} onClick={() => handleTabChange("users")}>
+              Users
             </button>
           </nav>
 

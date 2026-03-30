@@ -155,13 +155,40 @@ class FutsalController extends Controller
         }
     }
 
-    /**
+   /**
      * Get single futsal details
      */
     public function show($id): JsonResponse
     {
         try {
             Log::info('Fetching futsal details for ID: ' . $id);
+            
+            // MANUALLY AUTHENTICATE THE USER FROM BEARER TOKEN
+            $user = null;
+            $token = request()->bearerToken();
+            
+            Log::info('Token check', ['has_token' => !empty($token)]);
+            
+            if ($token) {
+                // The tokens are stored in plain text, not hashed
+                Log::info('Looking for token', ['token_preview' => substr($token, 0, 20) . '...']);
+                
+                // Find the token in personal_access_tokens table (plain text comparison)
+                $tokenRecord = DB::table('personal_access_tokens')
+                    ->where('token', $token)
+                    ->where('expires_at', '>', now()) // Check if not expired
+                    ->orWhereNull('expires_at')
+                    ->first();
+                
+                if ($tokenRecord) {
+                    $user = \App\Models\User::find($tokenRecord->tokenable_id);
+                    Log::info('User authenticated via token', ['user_id' => $user->id]);
+                } else {
+                    Log::info('Invalid or expired token - token not found in database');
+                }
+            } else {
+                Log::info('No bearer token found');
+            }
             
             $futsal = Futsal::find($id);
 
@@ -173,10 +200,29 @@ class FutsalController extends Controller
                 ], 404);
             }
 
+            // Check if user is restricted
+            $isRestricted = false;
+            $restrictedMessage = null;
+            
+            if ($user) {
+                $restrictedUsers = $futsal->restricted_users ?? [];
+                
+                Log::info('Restriction check', [
+                    'user_id' => $user->id,
+                    'restricted_users' => $restrictedUsers,
+                    'is_restricted' => in_array($user->id, $restrictedUsers)
+                ]);
+                
+                $isRestricted = in_array($user->id, $restrictedUsers);
+                if ($isRestricted) {
+                    $restrictedMessage = 'You have been restricted from booking at this futsal. Please contact the administrator.';
+                }
+            }
+
+            // Rest of your code...
             $today = now()->toDateString();
             $currentTime = now()->format('H:i:s');
             
-            // Get all slots that are available and not expired
             $availableSlots = FutsalSlot::with('timeSlot')
                 ->where('futsal_id', $id)
                 ->where('is_available', true)
@@ -193,9 +239,6 @@ class FutsalController extends Controller
                 ->orderBy('slot_date')
                 ->get();
 
-            Log::info('Found ' . $availableSlots->count() . ' available slots for futsal ID: ' . $id);
-
-            // Sort the slots by time after retrieving them
             $sortedSlots = $availableSlots->sortBy(function($slot) {
                 return $slot->timeSlot->start_time ?? '00:00:00';
             })->values();
@@ -212,11 +255,10 @@ class FutsalController extends Controller
                     'price' => (float) $slot->price,
                     'formatted_price' => 'Rs. ' . number_format($slot->price),
                     'is_expired' => false,
-                    'is_available' => $slot->is_available,  // ← ADD THIS LINE
+                    'is_available' => $slot->is_available,
                 ];
             });
 
-            // Group slots by date
             $slotsByDate = $mappedSlots->groupBy('date')->map(function($slots, $date) {
                 return [
                     'date' => $date,
@@ -226,7 +268,6 @@ class FutsalController extends Controller
                 ];
             })->values();
 
-            // Ensure image URL is full URL
             $imageUrl = $futsal->image;
             if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
                 $imageUrl = asset($imageUrl);
@@ -243,10 +284,12 @@ class FutsalController extends Controller
                 'image' => $imageUrl,
                 'total_slots' => $availableSlots->count(),
                 'slots_by_date' => $slotsByDate,
+                'is_restricted' => $isRestricted,
+                'restricted_message' => $restrictedMessage
             ];
 
-            Log::info('Successfully fetched futsal details for ID: ' . $id);
-            
+            Log::info('Response data', ['is_restricted' => $isRestricted]);
+
             return response()->json([
                 'success' => true,
                 'data' => $responseData

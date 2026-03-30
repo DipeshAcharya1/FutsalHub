@@ -11,6 +11,16 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
     }
   };
 
+  const getPriceDisplay = (slot) => {
+    if (slot.price_type === 'peak') {
+      return <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>Rs. {slot.price} <span style={{ fontSize: '11px', color: '#666' }}>(Peak)</span></span>;
+    } else if (slot.price_type === 'off_peak') {
+      return <span style={{ color: '#27ae60' }}>Rs. {slot.price} <span style={{ fontSize: '11px', color: '#666' }}>(Off-Peak)</span></span>;
+    } else {
+      return <span>Rs. {slot.price} <span style={{ fontSize: '11px', color: '#666' }}>(Custom)</span></span>;
+    }
+  };
+
   const getSlotBookingStatus = (slotId) => {
     if (!bookings) return null;
     const slotBookings = bookings.filter(booking => booking.futsal_slot_id === slotId);
@@ -48,8 +58,8 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
     const start = settings.open_time.split(':').map(Number);
     const end = settings.close_time.split(':').map(Number);
     const totalMinutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
-    const slotCycle = settings.slot_duration + settings.break_time;
-    return Math.floor(totalMinutes / slotCycle);
+    // No break time - slots run continuously
+    return Math.floor(totalMinutes / settings.slot_duration);
   };
 
   return (
@@ -58,7 +68,7 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
         <div>
           <h2 className="page-title">Futsal Slots</h2>
           <p className="page-sub">
-            Manage time slots for your futsal.
+            Manage time slots for your futsal. 
             {!canModify && <span style={{ color: '#856404', display: 'block', marginTop: '5px' }}>View only - modifications disabled</span>}
           </p>
         </div>
@@ -66,10 +76,10 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
           {canModify && (
             <>
               <button className="btn btn-secondary" onClick={onOpenSettings}>
-                 Settings
+                Settings
               </button>
               <button className="btn btn-success" onClick={onOpenGenerate}>
-                 Bulk Generate
+                Bulk Generate
               </button>
               <button className="btn btn-primary" onClick={onAddSlot}>
                 + Add Single Slot
@@ -90,10 +100,9 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
         <div className="info-card">
           <div className="info-grid">
             <div><strong>Hours:</strong> {settings.open_time} - {settings.close_time}</div>
-            <div><strong>Slot:</strong> {settings.slot_duration} min</div>
-            <div><strong>Break:</strong> {settings.break_time} min</div>
-            <div><strong>Price:</strong> Rs. {settings.default_price}</div>
-            <div><strong>Slots/Day:</strong> {getSlotsPreview()}</div>
+            <div><strong>Slot Duration:</strong> {settings.slot_duration} minutes</div>
+            <div><strong>Default Price:</strong> Rs. {settings.default_price}</div>
+            <div><strong>Slots Per Day:</strong> {getSlotsPreview()}</div>
           </div>
         </div>
       )}
@@ -121,8 +130,8 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
                 <th>Price (Rs.)</th>
                 <th>Status</th>
                 <th>Actions</th>
-              </tr>  
-               </thead>
+              </tr>
+            </thead>
             <tbody>
               {filteredSlots.length > 0 ? (
                 filteredSlots.map(slot => {
@@ -154,7 +163,7 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
                         <span className={`status-badge ${statusClass}`}>
                           {statusText}
                         </span>
-                       </td>
+                      </td>
                       <td>
                         {canModify && !expired && !bookingStatus && (
                           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -168,13 +177,13 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
                         {expired && <span className="small-text">Expired - No actions</span>}
                         {bookingStatus && !expired && <span className="small-text">Booked - Cannot modify</span>}
                         {!canModify && <span className="small-text">No actions</span>}
-                       </td>
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="empty-row">
+                  <td colSpan="5" className="empty-row">
                     {showExpired ? "No slots found." : "No future slots found. Configure settings and click Bulk Generate to create slots."}
                   </td>
                 </tr>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import api from "../../api/axios";
 import AdminSidebar from "./AdminSidebar";
 import AdminOverview from "./AdminOverview";
@@ -17,11 +17,19 @@ import "../../styles/AdminDashboard.css";
 
 const AdminDashboard = () => {
   const { futsal } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const futsalId = futsal || null;
   const userStr = localStorage.getItem("user");
   const user = userStr ? JSON.parse(userStr) : null;
 
-  const [tab, setTab] = useState("overview");
+  // Get tab from URL or default to "overview"
+  const getTabFromUrl = () => {
+    const tabParam = searchParams.get('tab');
+    const validTabs = ['overview', 'slots', 'bookings', 'payments', 'users', 'reports'];
+    return tabParam && validTabs.includes(tabParam) ? tabParam : 'overview';
+  };
+
+  const [tab, setTab] = useState(getTabFromUrl);
   const [loading, setLoading] = useState(false);
   const [slotLoading, setSlotLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -80,6 +88,12 @@ const AdminDashboard = () => {
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
+  // Update URL when tab changes
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
+
   useEffect(() => {
     if (!futsalId) {
       setError("Futsal ID is missing from the URL.");
@@ -126,12 +140,20 @@ const AdminDashboard = () => {
   const saveSettings = async (newSettings) => {
     setLoading(true);
     try {
-      await api.post("/admin/futsals/" + futsalId + "/settings", newSettings);
+      console.log('Saving settings:', newSettings);
+      const response = await api.post("/admin/futsals/" + futsalId + "/settings", newSettings);
+      console.log('Save response:', response.data);
       setSettings(newSettings);
       showSuccess("Settings saved successfully");
       setShowSettingsModal(false);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save settings");
+      console.error('Save settings error:', err.response?.data);
+      if (err.response?.data?.errors) {
+        const errorMessages = Object.values(err.response.data.errors).flat().join(', ');
+        setError(`Validation failed: ${errorMessages}`);
+      } else {
+        setError(err.response?.data?.message || "Failed to save settings");
+      }
     } finally {
       setLoading(false);
     }
@@ -507,7 +529,7 @@ const AdminDashboard = () => {
         futsalInfo={futsalInfo}
         futsalActive={futsalActive}
         tab={tab}
-        setTab={setTab}
+        setTab={handleTabChange}
       />
 
       <main className="admin-main">
@@ -540,7 +562,7 @@ const AdminDashboard = () => {
             onEditFutsal={openEditFutsal}
             onOpenSettings={() => setShowSettingsModal(true)}
             onOpenGenerate={() => setShowGenerateModal(true)}
-            setTab={setTab}
+            setTab={handleTabChange}
           />
         )}
 
@@ -590,7 +612,16 @@ const AdminDashboard = () => {
           <AdminPayments payments={payments} totalRevenue={totalRevenue} />
         )}
 
-        {tab === "users" && <AdminUsers users={users} />}
+        {tab === "users" && (
+          <AdminUsers 
+            users={users}
+            futsalId={futsalId} 
+            onUserUpdated={() => {
+              loadUsers();
+              loadBookings();
+            }}
+          />
+        )}
 
         {tab === "reports" && (
           <AdminReports

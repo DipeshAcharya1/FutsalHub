@@ -15,6 +15,17 @@ class Booking extends Model
         'booking_date',
         'status',
         'payment_status',
+        'refund_amount',
+        'refunded_at',
+        'payment_method',
+        'transaction_id',
+        'booking_reference',
+        'bulk_booking_id',      
+        'is_bulk_booking',      
+        'total_slots',          
+        'total_amount',         
+        'discount_amount',      
+        'discount_percentage'
     ];
 
     public function user()

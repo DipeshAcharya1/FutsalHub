@@ -1,46 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import api from "../api/axios";
 import "../styles/Header.css";
 
 const Header = () => {
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    const token = localStorage.getItem("access_token");
+    // Just check localStorage, no API call
     const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("access_token");
     
-    if (!token || !storedUser) {
-      setUser(null);
-      setLoading(false);
-      return;
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser));
     }
-
-    try {
-      const response = await api.get('/verify-token');
-      if (response.data.valid) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        setUser(null);
-      }
-    } catch (error) {
-      console.error("Token verification failed:", error);
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user");
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLoading(false);
+  }, []); // Empty dependency array - runs only once on mount
 
   const handleLogout = async () => {
     try {
@@ -55,7 +33,22 @@ const Header = () => {
     }
   };
 
-  if (loading) return null;
+  // Don't return null while loading
+  if (loading) {
+    // Return a skeleton header instead of null
+    return (
+      <header className="home-header">
+        <div className="home-left">
+          <Link to="/" className="home-logo">
+            Futsal Hub
+          </Link>
+        </div>
+        <nav className="home-nav">
+          <div className="skeleton-nav"></div>
+        </nav>
+      </header>
+    );
+  }
 
   return (
     <header className="home-header">
@@ -79,8 +72,7 @@ const Header = () => {
         {user ? (
           <>
             <Link to="/profile" className="nav-link profile-link" onClick={() => setOpen(false)}>
-              <span className="profile-icon">👤</span>
-              Profile
+              <span className="profile-icon">Profile</span>
             </Link>
             <button onClick={handleLogout} className="logout-btn">
               Logout

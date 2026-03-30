@@ -20,6 +20,9 @@ return new class extends Migration
             $table->date('booking_date');
             $table->timestamp('expires_at');
             $table->timestamps();
+
+            $table->index('transaction_id');
+            $table->index('user_id');
         });
     }
 

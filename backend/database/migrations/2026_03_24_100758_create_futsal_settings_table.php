@@ -14,7 +14,6 @@ return new class extends Migration
             $table->time('open_time')->default('06:00:00');
             $table->time('close_time')->default('22:00:00');
             $table->integer('slot_duration')->default(60);
-            $table->integer('break_time')->default(15);
             $table->decimal('default_price', 10, 2)->default(1500);
             $table->timestamps();
             
