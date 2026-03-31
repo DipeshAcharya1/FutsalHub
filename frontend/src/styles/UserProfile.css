@@ -716,3 +716,321 @@
     font-size: 16px;
   }
 }
+
+
+/* =============================================
+   BOOKINGS TABLE VIEW
+   ============================================= */
+
+.bookings-table-container {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.bookings-table-wrapper {
+  overflow-x: auto;
+}
+
+.bookings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.bookings-table thead {
+  background: #f8f9fa;
+  border-bottom: 2px solid #eef2f6;
+}
+
+.bookings-table th {
+  padding: 16px 20px;
+  text-align: left;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bookings-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid #eef2f6;
+  vertical-align: middle;
+}
+
+.bookings-table tr:hover {
+  background: #fafbfc;
+}
+
+/* Futsal Info Cell */
+.futsal-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.futsal-info strong {
+  font-size: 15px;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.futsal-info small {
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+/* Price Cell */
+.price-cell {
+  font-weight: 700;
+  color: #27ae60;
+  font-size: 15px;
+}
+
+/* Status Badges for Table */
+.status-badge-table {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-badge-table.status-confirmed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge-table.status-completed {
+  background: #e2e3e5;
+  color: #6c757d;
+}
+
+.status-badge-table.status-cancelled {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-badge-table.status-refunded {
+  background: #d4edda;
+  color: #155724;
+}
+
+/* Refund Badge */
+.refund-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #e8f5e9;
+  color: #27ae60;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Deadline Text */
+.deadline-text {
+  font-size: 12px;
+  color: #f39c12;
+  font-weight: 500;
+}
+
+.na-text {
+  color: #95a5a6;
+  font-size: 12px;
+}
+
+/* Action Buttons */
+.action-cancel {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: all 0.2s;
+}
+
+.action-cancel:hover:not(:disabled) {
+  background: #c0392b;
+  transform: translateY(-1px);
+}
+
+.action-cancel:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
+
+.action-view {
+  background: none;
+  border: 1px solid #3498db;
+  color: #3498db;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-view:hover {
+  background: #3498db;
+  color: white;
+}
+
+/* Warning Text */
+.warning-text {
+  font-size: 12px;
+  color: #e74c3c;
+  margin: 10px 0;
+  text-align: center;
+}
+
+/* Responsive Table */
+@media (max-width: 768px) {
+  .bookings-table th,
+  .bookings-table td {
+    padding: 12px 12px;
+  }
+  
+  .bookings-table th {
+    font-size: 11px;
+  }
+  
+  .bookings-table td {
+    font-size: 12px;
+  }
+  
+  .action-cancel,
+  .action-view {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 640px) {
+  .bookings-table thead {
+    display: none;
+  }
+  
+  .bookings-table,
+  .bookings-table tbody,
+  .bookings-table tr,
+  .bookings-table td {
+    display: block;
+    width: 100%;
+  }
+  
+  .bookings-table tr {
+    margin-bottom: 16px;
+    border: 1px solid #eef2f6;
+    border-radius: 12px;
+    background: white;
+  }
+  
+  .bookings-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eef2f6;
+  }
+  
+  .bookings-table td:last-child {
+    border-bottom: none;
+  }
+  
+  .bookings-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 12px;
+  }
+  
+  .futsal-info {
+    width: 100%;
+  }
+  
+  .action-cancel,
+  .action-view {
+    margin: 0 4px;
+  }
+}
+
+
+/* Bulk Row Styling */
+.bulk-row {
+  background: #fffaf5;
+  border-left: 3px solid #f39c12;
+}
+
+.bulk-badge {
+  display: inline-block;
+  background: #f39c12;
+  color: white;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-top: 6px;
+}
+
+.bulk-slot {
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.bulk-slot:last-child {
+  border-bottom: none;
+}
+
+.slot-status-badge {
+  display: inline-block;
+  background: #f8d7da;
+  color: #721c24;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+.bulk-price {
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.bulk-cancel-btn {
+  background: #f39c12 !important;
+}
+
+.bulk-cancel-btn:hover:not(:disabled) {
+  background: #e67e22 !important;
+}
+
+.status-partial {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.slots-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding-left: 10px;
+}
+
+.slots-list div {
+  font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.slot-price {
+  float: right;
+  color: #27ae60;
+  font-weight: 500;
+}

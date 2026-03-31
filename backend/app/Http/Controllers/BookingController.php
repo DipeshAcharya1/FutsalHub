@@ -269,12 +269,22 @@ class BookingController extends Controller
                     $slotDateTime = Carbon::parse($booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->start_time);
                     $now = Carbon::now();
                     $isPast = $now > $slotDateTime;
-                    $isExpired = $booking->status === 'pending' && $now > $booking->payment_expires_at;
                     $cancelDeadline = $slotDateTime->copy()->subHours(2);
                     
                     $canCancel = $booking->status === 'confirmed' 
                         && !$isPast 
                         && $now < $cancelDeadline;
+                    
+                    // Calculate time remaining for cancellation
+                    $timeRemaining = '';
+                    if ($canCancel) {
+                        $minutesRemaining = $now->diffInMinutes($cancelDeadline, false);
+                        if ($minutesRemaining > 0) {
+                            $hours = floor($minutesRemaining / 60);
+                            $minutes = $minutesRemaining % 60;
+                            $timeRemaining = "{$hours}h {$minutes}m";
+                        }
+                    }
                     
                     return [
                         'id' => $booking->id,
@@ -286,9 +296,10 @@ class BookingController extends Controller
                         'refund_amount' => $booking->refund_amount ?? 0,
                         'refunded_at' => $booking->refunded_at,
                         'payment_expires_at' => $booking->payment_expires_at,
-                        'is_expired' => $isExpired,
+                        'is_expired' => $booking->status === 'pending' && $now > $booking->payment_expires_at,
                         'can_cancel' => $canCancel,
                         'cancel_deadline' => $cancelDeadline,
+                        'time_remaining_to_cancel' => $timeRemaining,
                         'slot_start_time' => $slotDateTime,
                         'futsal_name' => $booking->futsalSlot->futsal->futsal_name ?? 'N/A',
                         'location' => $booking->futsalSlot->futsal->location ?? 'N/A',
@@ -298,6 +309,11 @@ class BookingController extends Controller
                         'price' => $booking->futsalSlot->price,
                         'is_past' => $isPast,
                         'created_at' => $booking->created_at,
+                        // IMPORTANT: Add bulk booking fields
+                        'bulk_booking_id' => $booking->bulk_booking_id,
+                        'is_bulk_booking' => (bool)$booking->is_bulk_booking,
+                        'total_slots' => $booking->total_slots ?? 1,
+                        'total_amount' => $booking->total_amount ?? $booking->futsalSlot->price,
                     ];
                 });
 
@@ -435,116 +451,116 @@ class BookingController extends Controller
         }
     }
 
-    /**
-     * Cancel bulk booking - cancels all slots in a bulk group
-     * This is called when user wants to cancel all slots in a bulk booking
-     */
-    public function cancelBulkBooking(Request $request): JsonResponse
-    {
-        try {
-            $user = $request->user();
-            
-            $validator = Validator::make($request->all(), [
-                'bulk_booking_id' => 'required|string',
-            ]);
+   /**
+ * Cancel bulk booking - cancels all slots in a bulk group
+ */
+public function cancelBulkBooking(Request $request): JsonResponse
+{
+    try {
+        $user = $request->user();
+        
+        $validator = Validator::make($request->all(), [
+            'bulk_booking_id' => 'required|string',
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-            $bulkBookingId = $request->bulk_booking_id;
-            
-            // Get all bookings in this bulk group
-            $bookings = Booking::with(['futsalSlot.futsal', 'futsalSlot.timeSlot'])
-                ->where('bulk_booking_id', $bulkBookingId)
-                ->where('user_id', $user->id)
-                ->get();
+        $bulkBookingId = $request->bulk_booking_id;
+        
+        // Get all bookings in this bulk group
+        $bookings = Booking::with(['futsalSlot.futsal', 'futsalSlot.timeSlot'])
+            ->where('bulk_booking_id', $bulkBookingId)
+            ->where('user_id', $user->id)
+            ->get();
 
-            if ($bookings->isEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Bulk booking not found'
-                ], 404);
-            }
+        if ($bookings->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bulk booking not found'
+            ], 404);
+        }
 
-            // Check if all bookings can be cancelled
-            $cancellableBookings = [];
-            $nonCancellableBookings = [];
-            
-            foreach ($bookings as $booking) {
-                if ($booking->status === 'confirmed') {
-                    $validationResult = $this->validateCancellation($booking);
-                    if ($validationResult['valid']) {
-                        $cancellableBookings[] = $booking;
-                    } else {
-                        $nonCancellableBookings[] = [
-                            'id' => $booking->id,
-                            'reason' => $validationResult['message']
-                        ];
-                    }
+        // Check if all bookings can be cancelled
+        $cancellableBookings = [];
+        $nonCancellableBookings = [];
+        
+        foreach ($bookings as $booking) {
+            if ($booking->status === 'confirmed') {
+                $validationResult = $this->validateCancellation($booking);
+                if ($validationResult['valid']) {
+                    $cancellableBookings[] = $booking;
                 } else {
                     $nonCancellableBookings[] = [
                         'id' => $booking->id,
-                        'reason' => 'Booking status is ' . $booking->status . ' (only confirmed bookings can be cancelled)'
+                        'reason' => $validationResult['message']
                     ];
                 }
+            } else {
+                $nonCancellableBookings[] = [
+                    'id' => $booking->id,
+                    'reason' => 'Booking status is ' . $booking->status . ' (only confirmed bookings can be cancelled)'
+                ];
             }
+        }
 
-            if (empty($cancellableBookings)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No cancellable bookings found in this bulk group',
-                    'data' => [
-                        'non_cancellable' => $nonCancellableBookings
-                    ]
-                ], 400);
+        if (empty($cancellableBookings)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No cancellable bookings found in this bulk group',
+                'data' => [
+                    'non_cancellable' => $nonCancellableBookings
+                ]
+            ], 400);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // Get the original payment for this bulk booking (use first booking's transaction_id)
+            $payment = DB::table('payments')
+                ->where('transaction_id', $bookings[0]->transaction_id)
+                ->first();
+            
+            if (!$payment) {
+                throw new \Exception('Payment record not found for this bulk booking');
             }
-
-            DB::beginTransaction();
-
-            try {
-                $totalRefund = 0;
+            
+            // Calculate total refund amount (sum of all cancellable slots)
+            $totalRefund = 0;
+            foreach ($cancellableBookings as $booking) {
+                $totalRefund += $booking->futsalSlot->price;
+            }
+            
+            // Process SINGLE refund for the entire bulk amount
+            $refundResult = $this->processKhaltiRefundForBulk($payment, $totalRefund, $bulkBookingId);
+            
+            if ($refundResult['success']) {
                 $cancelledCount = 0;
                 $failedBookings = [];
                 
+                // Update all cancellable bookings to cancelled status
                 foreach ($cancellableBookings as $booking) {
-                    // Update to refund pending status
-                    $booking->refund_status = 'pending';
+                    $booking->status = 'cancelled';
+                    $booking->refund_status = 'completed';
+                    $booking->refund_amount = $booking->futsalSlot->price;
+                    $booking->refunded_at = now();
                     $booking->save();
                     
-                    // Process refund through Khalti
-                    $refundResult = $this->processKhaltiRefund($booking);
+                    // Make slot available again
+                    $booking->futsalSlot->is_available = true;
+                    $booking->futsalSlot->save();
                     
-                    if ($refundResult['success']) {
-                        $booking->status = 'cancelled';
-                        $booking->refund_status = 'completed';
-                        $booking->refund_amount = $booking->futsalSlot->price;
-                        $booking->refunded_at = now();
-                        $booking->save();
-                        
-                        // Make slot available again
-                        $booking->futsalSlot->is_available = true;
-                        $booking->futsalSlot->save();
-                        
-                        $totalRefund += $booking->refund_amount;
-                        $cancelledCount++;
-                    } else {
-                        $booking->refund_status = 'failed';
-                        $booking->save();
-                        
-                        $failedBookings[] = [
-                            'id' => $booking->id,
-                            'message' => $refundResult['message'] ?? 'Unknown error'
-                        ];
-                    }
+                    $cancelledCount++;
                 }
                 
                 DB::commit();
                 
-                // Send bulk cancellation email if any bookings were cancelled
+                // Send bulk cancellation email
                 if ($cancelledCount > 0) {
                     $this->sendBulkCancellationEmail($cancellableBookings, $user);
                 }
@@ -568,20 +584,19 @@ class BookingController extends Controller
                         'non_cancellable' => $nonCancellableBookings
                     ]
                 ]);
-                
-            } catch (\Exception $e) {
+            } else {
                 DB::rollBack();
-                Log::error('Cancel bulk booking transaction error: ' . $e->getMessage(), [
-                    'bulk_booking_id' => $bulkBookingId,
-                    'user_id' => $user->id,
-                    'trace' => $e->getTraceAsString()
-                ]);
-                throw $e;
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Refund processing failed: ' . ($refundResult['message'] ?? 'Unknown error')
+                ], 500);
             }
             
         } catch (\Exception $e) {
-            Log::error('Cancel bulk booking error: ' . $e->getMessage(), [
-                'user_id' => $request->user()?->id,
+            DB::rollBack();
+            Log::error('Cancel bulk booking transaction error: ' . $e->getMessage(), [
+                'bulk_booking_id' => $bulkBookingId,
+                'user_id' => $user->id,
                 'trace' => $e->getTraceAsString()
             ]);
             
@@ -590,7 +605,105 @@ class BookingController extends Controller
                 'message' => 'Failed to cancel bulk booking: ' . $e->getMessage()
             ], 500);
         }
+        
+    } catch (\Exception $e) {
+        Log::error('Cancel bulk booking error: ' . $e->getMessage(), [
+            'user_id' => $request->user()?->id,
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to cancel bulk booking: ' . $e->getMessage()
+        ], 500);
     }
+}
+
+/**
+ * Process refund for bulk booking through Khalti API
+ */
+private function processKhaltiRefundForBulk($payment, $refundAmount, $bulkBookingId): array
+{
+    try {
+        // For development/testing - simulate successful refund
+        if (env('APP_ENV') === 'local' || !env('KHALTI_SECRET_KEY')) {
+            Log::info('Simulating bulk refund for development', [
+                'bulk_booking_id' => $bulkBookingId,
+                'amount' => $refundAmount
+            ]);
+            
+            DB::table('refunds')->insert([
+                'booking_id' => $payment->booking_id,
+                'payment_id' => $payment->id,
+                'amount' => $refundAmount,
+                'transaction_id' => 'SIM_BULK_REFUND_' . Str::random(10),
+                'status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            return ['success' => true];
+        }
+
+        $refundUrl = env('KHALTI_BASE_URL') . '/epayment/refund/';
+        
+        $payload = [
+            'pidx' => $payment->transaction_id,
+            'amount' => (int)($refundAmount * 100),
+            'reason' => 'User requested cancellation of bulk booking'
+        ];
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+            'Content-Type' => 'application/json',
+        ])->timeout(30)->post($refundUrl, $payload);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            
+            DB::table('refunds')->insert([
+                'booking_id' => $payment->booking_id,
+                'payment_id' => $payment->id,
+                'amount' => $refundAmount,
+                'transaction_id' => $data['refund_id'] ?? null,
+                'status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            Log::info('Bulk refund processed successfully', [
+                'bulk_booking_id' => $bulkBookingId,
+                'amount' => $refundAmount
+            ]);
+            
+            return ['success' => true];
+        } else {
+            $errorData = $response->json();
+            $errorMessage = $errorData['message'] ?? 'Khalti refund API error';
+            
+            Log::error('Khalti bulk refund failed', [
+                'bulk_booking_id' => $bulkBookingId,
+                'response' => $response->body()
+            ]);
+            
+            return [
+                'success' => false,
+                'message' => $errorMessage
+            ];
+        }
+        
+    } catch (\Exception $e) {
+        Log::error('Bulk refund processing error: ' . $e->getMessage(), [
+            'bulk_booking_id' => $bulkBookingId,
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
 
     /**
      * Get bulk booking details with all slots
@@ -672,95 +785,101 @@ class BookingController extends Controller
     }
 
     /**
-     * Send bulk cancellation confirmation email
-     */
-    private function sendBulkCancellationEmail($bookings, $user): void
-    {
-        try {
-            if (!$user || !$user->email) {
-                Log::error('Cannot send bulk cancellation email: user not found');
-                return;
-            }
+ * Send bulk cancellation confirmation email
+ */
+private function sendBulkCancellationEmail($bookings, $user): void
+{
+    try {
+        if (!$user || !$user->email) {
+            Log::error('Cannot send bulk cancellation email: user not found');
+            return;
+        }
 
-            $totalRefund = 0;
-            $slotsList = '';
+        $totalRefund = 0;
+        $slotsList = '';
+        
+        foreach ($bookings as $index => $booking) {
+            $slot = $booking->futsalSlot;
+            $timeSlot = $slot->timeSlot;
+            $futsal = $slot->futsal;
             
-            foreach ($bookings as $index => $booking) {
-                $slot = $booking->futsalSlot;
-                $timeSlot = $slot->timeSlot;
-                $futsal = $slot->futsal;
-                $totalRefund += $booking->refund_amount;
-                
-                $slotsList .= "\n  " . ($index + 1) . ". " . Carbon::parse($slot->slot_date)->format('l, F d, Y') 
-                    . " | {$timeSlot->start_time} - {$timeSlot->end_time} | Rs. {$booking->refund_amount}";
-            }
+            // Get the refund amount - ensure it's set correctly
+            $refundAmount = $booking->refund_amount ?? $booking->futsalSlot->price ?? 0;
+            $totalRefund += $refundAmount;
+            
+            $slotDate = Carbon::parse($slot->slot_date)->format('l, F d, Y');
+            $startTime = date('g:i A', strtotime($timeSlot->start_time));
+            $endTime = date('g:i A', strtotime($timeSlot->end_time));
+            
+            $slotsList .= "\n  " . ($index + 1) . ". {$slotDate} | {$startTime} - {$endTime} | Rs. " . number_format($refundAmount, 2);
+        }
 
-            $html = "
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Bulk Booking Cancelled - FutsalHub</title>
-                <style>
-                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
-                    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                    .header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 30px; text-align: center; }
-                    .header h1 { margin: 0; font-size: 24px; }
-                    .content { padding: 30px; }
-                    .booking-details { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; }
-                    .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0e0e0; }
-                    .slots-list { background: #fff; padding: 15px; margin: 15px 0; border-left: 3px solid #e74c3c; }
-                    .refund-amount { font-size: 20px; font-weight: 700; color: #27ae60; }
-                    .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <h1>Bulk Booking Cancelled</h1>
-                        <p>All selected slots have been cancelled</p>
-                    </div>
-                    <div class='content'>
-                        <h2>Hello " . ($user->name ?? 'User') . ",</h2>
-                        <p>Your bulk booking has been successfully cancelled.</p>
-                        
-                        <div class='booking-details'>
-                            <h3>Cancelled Slots (" . count($bookings) . " slots)</h3>
-                            <div class='slots-list'>
-                                " . nl2br($slotsList) . "
-                            </div>
-                            
-                            <div class='detail-row'>
-                                <span><strong>Total Refund Amount:</strong></span>
-                                <span class='refund-amount'>Rs. {$totalRefund}</span>
-                            </div>
+        $html = "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Bulk Booking Cancelled - FutsalHub</title>
+            <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+                .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 30px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; }
+                .content { padding: 30px; }
+                .booking-details { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; }
+                .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0e0e0; }
+                .slots-list { background: #fff; padding: 15px; margin: 15px 0; border-left: 3px solid #e74c3c; white-space: pre-line; }
+                .refund-amount { font-size: 20px; font-weight: 700; color: #27ae60; }
+                .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    <h1>Bulk Booking Cancelled</h1>
+                    <p>All selected slots have been cancelled</p>
+                </div>
+                <div class='content'>
+                    <h2>Hello " . ($user->name ?? 'User') . ",</h2>
+                    <p>Your bulk booking has been successfully cancelled.</p>
+                    
+                    <div class='booking-details'>
+                        <h3>Cancelled Slots (" . count($bookings) . " slots)</h3>
+                        <div class='slots-list'>
+                            " . nl2br($slotsList) . "
                         </div>
                         
-                        <p>The refund will be credited to your original payment method within 5-7 business days.</p>
-                        <p>We hope to see you again soon!</p>
+                        <div class='detail-row'>
+                            <span><strong>Total Refund Amount:</strong></span>
+                            <span class='refund-amount'>Rs. " . number_format($totalRefund, 2) . "</span>
+                        </div>
                     </div>
-                    <div class='footer'>
-                        <p>FutsalHub - Easy Futsal Booking</p>
-                    </div>
+                    
+                    <p>The refund will be credited to your original payment method within 5-7 business days.</p>
+                    <p>We hope to see you again soon!</p>
                 </div>
-            </body>
-            </html>
-            ";
+                <div class='footer'>
+                    <p>FutsalHub - Easy Futsal Booking</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
 
-            Mail::html($html, function ($message) use ($user) {
-                $message->to($user->email, $user->name)
-                        ->subject('Bulk Booking Cancelled - FutsalHub');
-            });
-            
-            Log::info('Bulk cancellation email sent', [
-                'user_id' => $user->id,
-                'slots_count' => count($bookings),
-                'total_refund' => $totalRefund
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Failed to send bulk cancellation email: ' . $e->getMessage());
-        }
+        Mail::html($html, function ($message) use ($user) {
+            $message->to($user->email, $user->name)
+                    ->subject('Bulk Booking Cancelled - FutsalHub');
+        });
+        
+        Log::info('Bulk cancellation email sent', [
+            'user_id' => $user->id,
+            'slots_count' => count($bookings),
+            'total_refund' => $totalRefund
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to send bulk cancellation email: ' . $e->getMessage());
     }
+}
 
     /**
      * Cancel pending booking (before payment)

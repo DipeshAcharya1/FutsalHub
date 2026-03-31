@@ -90,7 +90,6 @@ const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Phone</th>
-                <th>Role</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -100,11 +99,6 @@ const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
                   <td><strong>{u.name || "N/A"}</strong></td>
                   <td>{u.email || "N/A"}</td>
                   <td>{u.phone || "N/A"}</td>
-                  <td>
-                    <span className={`role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}`}>
-                      {u.role || "user"}
-                    </span>
-                  </td>
                   <td>
                     <button 
                       className="btn-view-user"

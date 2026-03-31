@@ -607,49 +607,68 @@ public function verifyPayment(Request $request): JsonResponse
     try {
         $bookingIds = [];
         $bulkBookingId = $bulkIntent->bulk_booking_id;
+        $totalAmount = (float)$bulkIntent->total_amount; // Ensure it's a float
         
         foreach ($slots as $slotData) {
+            $amount = (float)($slotData['amount'] ?? DB::table('futsal_slots')->where('id', $slotData['slot_id'])->value('price'));
+            
             $bookingId = DB::table('bookings')->insertGetId([
                 'user_id' => $bulkIntent->user_id,
                 'futsal_slot_id' => $slotData['slot_id'],
                 'booking_date' => $slotData['booking_date'],
                 'status' => 'confirmed',
                 'payment_status' => 'paid',
+                'refund_status' => 'none',
+                'refund_amount' => 0,
                 'bulk_booking_id' => $bulkBookingId,
-                'is_bulk_booking' => true,
+                'is_bulk_booking' => 1,
                 'total_slots' => $bulkIntent->total_slots,
-                'total_amount' => $bulkIntent->total_amount,
+                'total_amount' => $totalAmount, // Use the total amount, not individual
+                'booking_reference' => 'BK-BULK-' . strtoupper(Str::random(8)),
+                'payment_method' => 'Online',
+                'transaction_id' => $pidx,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             $bookingIds[] = $bookingId;
             
+            // Mark slot as unavailable
             DB::table('futsal_slots')
                 ->where('id', $slotData['slot_id'])
-                ->update(['is_available' => false]);
+                ->update([
+                    'is_available' => false,
+                    'updated_at' => now()
+                ]);
         }
         
+        // Create single payment record for the bulk booking
         DB::table('payments')->insert([
             'booking_id' => $bookingIds[0],
-            'amount' => $bulkIntent->total_amount,
+            'amount' => $totalAmount,
             'payment_method' => 'Online',
             'transaction_id' => $pidx,
-            'payment_date' => now(),
             'status' => 'completed',
+            'payment_date' => now(),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
         
+        // Delete the payment intent
         DB::table('bulk_payment_intents')->where('id', $bulkIntent->id)->delete();
         
         DB::commit();
         
+        // Get booking details for email
         $booking = DB::table('bookings')
             ->join('futsal_slots', 'bookings.futsal_slot_id', '=', 'futsal_slots.id')
             ->join('time_slots', 'futsal_slots.slot_id', '=', 'time_slots.id')
             ->join('futsals', 'futsal_slots.futsal_id', '=', 'futsals.id')
             ->where('bookings.id', $bookingIds[0])
             ->first();
+        
+        // Add bulk info to booking object for email
+        $booking->total_amount = $totalAmount;
+        $booking->total_slots = $bulkIntent->total_slots;
         
         $this->sendBulkBookingConfirmation($booking, $bulkIntent->user_id, $slots);
         

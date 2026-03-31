@@ -14,7 +14,6 @@ const UserProfile = () => {
   const [successMsg, setSuccessMsg] = useState(null);
   const [user, setUser] = useState(null);
   
-  // Get active tab from URL query parameter
   const getActiveTabFromUrl = () => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
@@ -26,32 +25,30 @@ const UserProfile = () => {
   
   const [activeTab, setActiveTab] = useState(getActiveTabFromUrl);
   
-  // Profile form
   const [profileForm, setProfileForm] = useState({
     name: "",
     email: "",
     phone: "",
   });
   
-  // Password form 
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
     new_password_confirmation: "",
   });
   
-  // Form errors
   const [formErrors, setFormErrors] = useState({});
-  
-  // User bookings
   const [bookings, setBookings] = useState([]);
+  const [groupedBookings, setGroupedBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(null);
+  const [cancellingBulk, setCancellingBulk] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showBulkConfirmModal, setShowBulkConfirmModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedBulkGroup, setSelectedBulkGroup] = useState(null);
 
-  // Update URL when tab changes
   const updateTabInUrl = (tab) => {
     const params = new URLSearchParams(location.search);
     params.set('tab', tab);
@@ -68,13 +65,17 @@ const UserProfile = () => {
     loadUserBookings();
   }, []);
 
-  // Re-read tab from URL when location changes (for browser back/forward)
   useEffect(() => {
     const tabFromUrl = getActiveTabFromUrl();
     if (tabFromUrl !== activeTab) {
       setActiveTab(tabFromUrl);
     }
   }, [location.search]);
+
+  // Group bookings when they change
+  useEffect(() => {
+    groupBookingsByBulk();
+  }, [bookings]);
 
   const loadUserData = async () => {
     const userStr = localStorage.getItem("user");
@@ -115,14 +116,60 @@ const UserProfile = () => {
       }
     } catch (err) {
       console.error("Failed to load bookings:", err);
+      setError("Failed to load bookings");
     } finally {
       setBookingsLoading(false);
     }
   };
 
+  const groupBookingsByBulk = () => {
+    const bulkGroups = {};
+    const singleBookings = [];
+
+    bookings.forEach(booking => {
+      if (booking.bulk_booking_id && booking.is_bulk_booking) {
+        if (!bulkGroups[booking.bulk_booking_id]) {
+          bulkGroups[booking.bulk_booking_id] = {
+            id: booking.bulk_booking_id,
+            is_bulk: true,
+            bookings: [],
+            total_amount: booking.total_amount || 0,
+            total_slots: booking.total_slots || 0,
+            futsal_name: booking.futsal_name,
+            location: booking.location,
+            can_cancel_all: true,
+            has_cancelled: false
+          };
+        }
+        bulkGroups[booking.bulk_booking_id].bookings.push(booking);
+        if (booking.status !== 'confirmed') {
+          bulkGroups[booking.bulk_booking_id].has_cancelled = true;
+        }
+        if (!booking.can_cancel || booking.status !== 'confirmed') {
+          bulkGroups[booking.bulk_booking_id].can_cancel_all = false;
+        }
+      } else {
+        singleBookings.push(booking);
+      }
+    });
+
+    // Check if all bookings in bulk group can be cancelled
+    Object.values(bulkGroups).forEach(group => {
+      let allCancellable = true;
+      group.bookings.forEach(booking => {
+        if (!booking.can_cancel || booking.status !== 'confirmed') {
+          allCancellable = false;
+        }
+      });
+      group.can_cancel_all = allCancellable;
+    });
+
+    setGroupedBookings([...Object.values(bulkGroups), ...singleBookings]);
+  };
+
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
+    setTimeout(() => setSuccessMsg(null), 5000);
   };
 
   const handleAvatarClick = () => {
@@ -154,32 +201,32 @@ const UserProfile = () => {
       });
       
       if (response.data.success) {
-        showSuccess("Avatar updated");
+        showSuccess("Avatar updated successfully");
         const updatedUser = { ...user, avatar: response.data.avatar_url };
         localStorage.setItem("user", JSON.stringify(updatedUser));
         setUser(updatedUser);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to upload");
+      setError(err.response?.data?.message || "Failed to upload avatar");
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeleteAvatar = async () => {
-    if (!window.confirm("Delete profile picture?")) return;
+    if (!window.confirm("Are you sure you want to delete your profile picture?")) return;
     
     setUploading(true);
     try {
       const response = await api.delete("/user/avatar");
       if (response.data.success) {
-        showSuccess("Avatar deleted");
+        showSuccess("Avatar deleted successfully");
         const updatedUser = { ...user, avatar: null };
         localStorage.setItem("user", JSON.stringify(updatedUser));
         setUser(updatedUser);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to delete");
+      setError(err.response?.data?.message || "Failed to delete avatar");
     } finally {
       setUploading(false);
     }
@@ -221,7 +268,7 @@ const UserProfile = () => {
         const updatedUser = { ...user, ...profileForm };
         localStorage.setItem("user", JSON.stringify(updatedUser));
         setUser(updatedUser);
-        showSuccess("Profile updated");
+        showSuccess("Profile updated successfully");
         setFormErrors({});
       }
     } catch (err) {
@@ -254,7 +301,6 @@ const UserProfile = () => {
         });
         showSuccess("Password changed successfully");
         setFormErrors({});
-        // Stay on same tab - no redirect
       }
     } catch (err) {
       if (err.response?.status === 422) {
@@ -267,9 +313,14 @@ const UserProfile = () => {
     }
   };
 
-  const handleCancelBooking = async (booking) => {
+  const handleCancelBooking = (booking) => {
     setSelectedBooking(booking);
     setShowConfirmModal(true);
+  };
+
+  const handleBulkCancel = (bulkGroup) => {
+    setSelectedBulkGroup(bulkGroup);
+    setShowBulkConfirmModal(true);
   };
 
   const confirmCancel = async () => {
@@ -279,19 +330,15 @@ const UserProfile = () => {
     setError(null);
     
     try {
-      let response;
-      
-      if (selectedBooking.status === 'confirmed') {
-        response = await api.post(`/bookings/${selectedBooking.id}/refund`);
-      } else {
-        response = await api.patch(`/bookings/${selectedBooking.id}/cancel`);
-      }
+      const response = await api.post(`/bookings/${selectedBooking.id}/refund`);
       
       if (response.data.success) {
         await loadUserBookings();
         setShowConfirmModal(false);
         setSelectedBooking(null);
-        alert(response.data.message);
+        showSuccess(response.data.message);
+      } else {
+        setError(response.data.message);
       }
     } catch (err) {
       console.error('Cancel error:', err);
@@ -301,7 +348,35 @@ const UserProfile = () => {
     }
   };
 
+  const confirmBulkCancel = async () => {
+    if (!selectedBulkGroup) return;
+    
+    setCancellingBulk(selectedBulkGroup.id);
+    setError(null);
+    
+    try {
+      const response = await api.post('/bookings/bulk/cancel', {
+        bulk_booking_id: selectedBulkGroup.id
+      });
+      
+      if (response.data.success) {
+        await loadUserBookings();
+        setShowBulkConfirmModal(false);
+        setSelectedBulkGroup(null);
+        showSuccess(response.data.message);
+      } else {
+        setError(response.data.message);
+      }
+    } catch (err) {
+      console.error('Bulk cancel error:', err);
+      setError(err.response?.data?.message || 'Failed to cancel bulk booking');
+    } finally {
+      setCancellingBulk(null);
+    }
+  };
+
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -310,7 +385,7 @@ const UserProfile = () => {
   };
 
   const formatTime = (time) => {
-    if (!time) return '';
+    if (!time) return 'N/A';
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -318,51 +393,34 @@ const UserProfile = () => {
     return `${hour12}:${minutes} ${ampm}`;
   };
 
-  const formatDateTime = (dateTime) => {
-    return new Date(dateTime).toLocaleString();
+  const formatDeadline = (deadline) => {
+    if (!deadline) return 'N/A';
+    const date = new Date(deadline);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
-  const getStatusBadge = (booking) => {
+  const getStatusClass = (booking) => {
     if (booking.status === 'cancelled') {
-      if (booking.refund_status === 'completed') {
-        return <span className="status-badge refunded">Refunded</span>;
-      }
-      return <span className="status-badge cancelled">Cancelled</span>;
+      if (booking.refund_status === 'completed') return 'status-refunded';
+      return 'status-cancelled';
     }
-    if (booking.is_past) {
-      return <span className="status-badge completed">Completed</span>;
-    }
-    return <span className="status-badge confirmed">Confirmed</span>;
+    if (booking.is_past) return 'status-completed';
+    return 'status-confirmed';
   };
 
-  const getRefundDisplay = (booking) => {
-    if (booking.status !== 'cancelled') return null;
-    
-    if (booking.refund_status === 'completed') {
-      return (
-        <div className="refund-info">
-          <span className="refund-label">Refund</span>
-          <span className="refund-amount">Rs. {booking.refund_amount} refunded</span>
-        </div>
-      );
+  const getStatusText = (booking) => {
+    if (booking.status === 'cancelled') {
+      if (booking.refund_status === 'completed') return 'Refunded';
+      return 'Cancelled';
     }
-    if (booking.refund_status === 'pending') {
-      return (
-        <div className="refund-info pending">
-          <span className="refund-label">Refund</span>
-          <span className="refund-status-pending">Processing</span>
-        </div>
-      );
-    }
-    if (booking.refund_status === 'failed') {
-      return (
-        <div className="refund-info failed">
-          <span className="refund-label">Refund</span>
-          <span className="refund-status-failed">Failed - Contact support</span>
-        </div>
-      );
-    }
-    return null;
+    if (booking.is_past) return 'Completed';
+    return 'Confirmed';
   };
 
   if (!user) {
@@ -522,12 +580,12 @@ const UserProfile = () => {
               </div>
             )}
 
-            {/* My Bookings Tab - Card Layout */}
+            {/* My Bookings Tab - TABLE VIEW WITH BULK GROUPING */}
             {activeTab === "bookings" && (
-              <div className="bookings-container">
+              <div className="bookings-table-container">
                 {bookingsLoading ? (
                   <div className="loading-container">Loading your bookings...</div>
-                ) : bookings.length === 0 ? (
+                ) : groupedBookings.length === 0 ? (
                   <div className="empty-state">
                     <p>No bookings found.</p>
                     <button className="btn-primary" onClick={() => navigate('/futsals')}>
@@ -535,59 +593,125 @@ const UserProfile = () => {
                     </button>
                   </div>
                 ) : (
-                  <div className="bookings-grid">
-                    {bookings.map((booking) => (
-                      <div key={booking.id} className="booking-card">
-                        <div className="booking-header">
-                          <div>
-                            <h3>{booking.futsal_name}</h3>
-                            <p className="location">{booking.location}</p>
-                          </div>
-                          {getStatusBadge(booking)}
-                        </div>
-
-                        <div className="booking-details">
-                          <div className="detail-item">
-                            <span className="detail-label">Date</span>
-                            <span className="detail-value">{formatDate(booking.slot_date)}</span>
-                          </div>
-                          <div className="detail-item">
-                            <span className="detail-label">Time</span>
-                            <span className="detail-value">{formatTime(booking.start_time)} - {formatTime(booking.end_time)}</span>
-                          </div>
-                          <div className="detail-item">
-                            <span className="detail-label">Price</span>
-                            <span className="detail-value price">Rs. {booking.price}</span>
-                          </div>
-                          <div className="detail-item">
-                            <span className="detail-label">Payment</span>
-                            <span className="payment-status paid">Paid</span>
-                          </div>
-                          
-                          {getRefundDisplay(booking)}
-                        
-                        </div>
-
-                        <div className="booking-actions">
-                          {booking.status === 'confirmed' && !booking.is_past && booking.can_cancel && (
-                            <button 
-                              className="btn-cancel"
-                              onClick={() => handleCancelBooking(booking)}
-                              disabled={cancelling === booking.id}
-                            >
-                              {cancelling === booking.id ? "Processing..." : "Cancel Booking"}
-                            </button>
-                          )}
-                          
-                          <button 
-                            className="btn-details"
-                            onClick={() => navigate(`/booking/${booking.id}`)}
-                          >
-                            View Details
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="bookings-table-wrapper">
+                    <table className="bookings-table">
+                      <thead>
+                        <tr>
+                          <th>Futsal</th>
+                          <th>Date/Time</th>
+                          <th>Price</th>
+                          <th>Status</th>
+                          <th>Cancel By</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupedBookings.map((item, idx) => {
+                          if (item.is_bulk) {
+                            // Render Bulk Booking Row
+                            return (
+                              <tr key={item.id} className="booking-row bulk-row">
+                                <td className="futsal-info">
+                                  <strong>📦 {item.futsal_name}</strong>
+                                  <small>{item.location}</small>
+                                  <span className="bulk-badge">{item.total_slots} slots • Rs. {item.total_amount}</span>
+                                 </td>
+                                <td>
+                                  {item.bookings.map((booking, i) => (
+                                    <div key={i} className="bulk-slot">
+                                      {formatDate(booking.slot_date)} {formatTime(booking.start_time)}-{formatTime(booking.end_time)}
+                                      {booking.status !== 'confirmed' && (
+                                        <span className="slot-status-badge">{getStatusText(booking)}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </td>
+                                <td className="price-cell">
+                                  {item.bookings.map((booking, i) => (
+                                    <div key={i} className="bulk-price">Rs. {booking.price}</div>
+                                  ))}
+                                </td>
+                                <td>
+                                  {item.has_cancelled ? (
+                                    <span className="status-badge-table status-partial">Partial</span>
+                                  ) : (
+                                    <span className="status-badge-table status-confirmed">Active</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {item.can_cancel_all && !item.has_cancelled ? (
+                                    <span className="deadline-text">Before game time</span>
+                                  ) : (
+                                    <span className="na-text">—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {item.can_cancel_all && !item.has_cancelled && (
+                                    <button 
+                                      className="action-cancel bulk-cancel-btn"
+                                      onClick={() => handleBulkCancel(item)}
+                                      disabled={cancellingBulk === item.id}
+                                    >
+                                      {cancellingBulk === item.id ? "..." : "Cancel All"}
+                                    </button>
+                                  )}
+                                  <button className="action-view">View</button>
+                                </td>
+                              </tr>
+                            );
+                          } else {
+                            // Render Single Booking Row
+                            const booking = item;
+                            const canCancel = booking.status === 'confirmed' && !booking.is_past && booking.can_cancel;
+                            const statusClass = getStatusClass(booking);
+                            const statusText = getStatusText(booking);
+                            
+                            return (
+                              <tr key={booking.id} className="booking-row">
+                                <td className="futsal-info">
+                                  <strong>{booking.futsal_name}</strong>
+                                  <small>{booking.location}</small>
+                                </td>
+                                <td>{formatDate(booking.slot_date)} {formatTime(booking.start_time)}-{formatTime(booking.end_time)}</td>
+                                <td className="price-cell">Rs. {booking.price}</td>
+                                <td>
+                                  <span className={`status-badge-table ${statusClass}`}>
+                                    {statusText}
+                                  </span>
+                                  {booking.status === 'cancelled' && booking.refund_status === 'completed' && (
+                                    <span className="refund-badge">Refunded</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {booking.status === 'confirmed' && !booking.is_past && booking.cancel_deadline ? (
+                                    <span className="deadline-text">{formatDeadline(booking.cancel_deadline)}</span>
+                                  ) : (
+                                    <span className="na-text">—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {canCancel && (
+                                    <button 
+                                      className="action-cancel"
+                                      onClick={() => handleCancelBooking(booking)}
+                                      disabled={cancelling === booking.id}
+                                    >
+                                      {cancelling === booking.id ? "..." : "Cancel"}
+                                    </button>
+                                  )}
+                                  <button 
+                                    className="action-view"
+                                    onClick={() => navigate(`/booking/${booking.id}`)}
+                                  >
+                                    View
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          }
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -597,7 +721,7 @@ const UserProfile = () => {
       </main>
       <Footer />
 
-      {/* Confirmation Modal */}
+      {/* Single Booking Cancellation Modal */}
       {showConfirmModal && selectedBooking && (
         <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -612,11 +736,12 @@ const UserProfile = () => {
                 <p>{formatDate(selectedBooking.slot_date)} | {formatTime(selectedBooking.start_time)} - {formatTime(selectedBooking.end_time)}</p>
                 <p>Amount: Rs. {selectedBooking.price}</p>
               </div>
-              {selectedBooking.status === 'confirmed' && (
-                <div className="refund-info">
-                  Refund of Rs. {selectedBooking.price}.
-                </div>
-              )}
+              <p className="warning-text">
+                ⚠️ You must cancel at least 2 hours before the game time to receive a full refund.
+              </p>
+              <div className="refund-info">
+                Refund of Rs. {selectedBooking.price} will be processed within 5-7 business days.
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowConfirmModal(false)}>
@@ -624,6 +749,49 @@ const UserProfile = () => {
               </button>
               <button className="btn-danger" onClick={confirmCancel} disabled={cancelling === selectedBooking.id}>
                 {cancelling === selectedBooking.id ? 'Processing...' : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Booking Cancellation Modal */}
+      {showBulkConfirmModal && selectedBulkGroup && (
+        <div className="modal-overlay" onClick={() => setShowBulkConfirmModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Cancel Bulk Booking</h3>
+              <button className="modal-close" onClick={() => setShowBulkConfirmModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p>Are you sure you want to cancel ALL {selectedBulkGroup.total_slots} slots?</p>
+              <div className="booking-summary">
+                <p><strong>{selectedBulkGroup.futsal_name}</strong> - {selectedBulkGroup.location}</p>
+                <p><strong>{selectedBulkGroup.total_slots} slots</strong> • Total: Rs. {selectedBulkGroup.total_amount}</p>
+                <div className="slots-list">
+                  {selectedBulkGroup.bookings.map((booking, idx) => (
+                    <div key={idx}>
+                      • {formatDate(booking.slot_date)} | {formatTime(booking.start_time)} - {formatTime(booking.end_time)} 
+                      <span className="slot-price">Rs. {booking.price}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="refund-info">
+                <strong>Total Refund:</strong> Rs. {selectedBulkGroup.total_amount}
+                <br />
+                <small>Will be processed within 5-7 business days</small>
+              </div>
+              <p className="warning-text">
+                ⚠️ You must cancel at least 2 hours before each game time to receive full refunds.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowBulkConfirmModal(false)}>
+                No, Keep All
+              </button>
+              <button className="btn-danger" onClick={confirmBulkCancel} disabled={cancellingBulk === selectedBulkGroup.id}>
+                {cancellingBulk === selectedBulkGroup.id ? 'Processing...' : 'Yes, Cancel All'}
               </button>
             </div>
           </div>
