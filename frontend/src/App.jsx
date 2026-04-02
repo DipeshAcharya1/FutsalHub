@@ -15,6 +15,8 @@ import ResetPassword from "./pages/ResetPassword";
 import ForgotPassword from "./pages/ForgotPassword";
 import PaymentVerify from "./pages/KhaltiVerify";
 import KhaltiPayment from "./components/KhaltiPayment";
+import VerifyEmail from "./pages/VerifyEmail";
+import VerifyEmailNotice from "./pages/VerifyEmailNotice";
 
 const App = () => {
   return (
@@ -31,6 +33,9 @@ const App = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/payment/verify" element={<PaymentVerify />} />
+        <Route path="/verify-email/:id/:token" element={<VerifyEmail />} />
+        <Route path="/verify-email-notice" element={<VerifyEmailNotice />} />
+
 
         {/* Protected Routes */}
         <Route

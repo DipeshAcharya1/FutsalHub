@@ -94,28 +94,34 @@ const Register = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const v = await validate();
-    setErrors(v);
-    if (Object.keys(v).length > 0) return;
+  const v = await validate();
+  setErrors(v);
+  if (Object.keys(v).length > 0) return;
 
-    setLoading(true);
-    try {
-      await api.post("/register", form);
-      navigate("/login", { state: { message: "Registration successful! Please login." } });
-    } catch (err) {
-      if (err.response?.status === 422) {
-        setErrors(err.response.data.errors);
-      } else if (err.response?.status === 409) {
-        setErrors({ email: "Email already exists. Please use a different email." });
-      } else {
-        setErrors({ general: "Registration failed. Please try again." });
-      }
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    const response = await api.post("/register", form);
+    
+    // Store token
+    localStorage.setItem("access_token", response.data.access_token);
+    localStorage.setItem("user", JSON.stringify(response.data.user));
+    
+    // Redirect to verification notice
+    navigate("/verify-email-notice");
+  } catch (err) {
+    if (err.response?.status === 422) {
+      setErrors(err.response.data.errors);
+    } else if (err.response?.status === 409) {
+      setErrors({ email: "Email already exists. Please use a different email." });
+    } else {
+      setErrors({ general: "Registration failed. Please try again." });
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="auth-page">

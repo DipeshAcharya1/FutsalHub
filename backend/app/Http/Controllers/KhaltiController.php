@@ -719,9 +719,9 @@ private function sendBookingConfirmation($booking)
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
         $emailBody = "Hello {$user->name},\n\n"
-            . "✅ Your booking has been CONFIRMED!\n\n"
+            . " Your booking has been CONFIRMED!\n\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            . "📋 BOOKING DETAILS\n"
+            . " BOOKING DETAILS\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             . "Booking ID: #{$booking->id}\n"
             . "Futsal: {$futsalName}\n"
@@ -729,20 +729,20 @@ private function sendBookingConfirmation($booking)
             . "Time: {$startTime} - {$endTime}\n"
             . "Amount: Rs. {$price}\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            . "📍 Important Information:\n"
+            . " Important Information:\n"
             . "• Please arrive 15 minutes before your booking time\n"
             . "• Cancellation allowed up to 2 hours before the slot\n"
             . "• Show this email at the futsal counter\n\n"
-            . "🔗 View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
+            . " View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
             . "Thank you for choosing FutsalHub!\n"
-            . "🏃‍♂️⚽ Have a great game!\n\n"
+            . " Have a great game!\n\n"
             . "Regards,\n"
             . "FutsalHub Team";
 
         // Use Mail::raw for plain text email (this works!)
         Mail::raw($emailBody, function ($message) use ($user, $booking) {
             $message->to($user->email, $user->name ?? 'Valued Customer')
-                    ->subject('✅ Booking Confirmed - FutsalHub #' . $booking->id);
+                    ->subject(' Booking Confirmed - FutsalHub #' . $booking->id);
         });
         
         Log::info('✓ Confirmation email sent successfully to: ' . $user->email, [
@@ -795,33 +795,33 @@ private function sendBulkBookingConfirmation($booking, $userId, $slots)
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
         $emailBody = "Hello {$user->name},\n\n"
-            . "✅ Your BULK BOOKING has been CONFIRMED!\n\n"
+            . " Your BULK BOOKING has been CONFIRMED!\n\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            . "📋 BULK BOOKING DETAILS\n"
+            . " BULK BOOKING DETAILS\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             . "Reference ID: #{$booking->id}\n"
             . "Futsal: {$futsalName}\n"
             . "Location: {$location}\n"
             . "Total Slots: {$totalSlots}\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            . "📅 BOOKED SLOTS:\n"
+            . " BOOKED SLOTS:\n"
             . "{$slotsList}\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            . "💰 Total Amount: Rs. {$totalAmount}\n"
+            . " Total Amount: Rs. {$totalAmount}\n"
             . "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            . "📍 Important Information:\n"
+            . " Important Information:\n"
             . "• Please arrive 15 minutes before your first booking\n"
             . "• Cancellation allowed up to 2 hours before each slot\n"
             . "• Show this email at the futsal counter\n\n"
-            . "🔗 View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
+            . " View your bookings: {$frontendUrl}/profile?tab=bookings\n\n"
             . "Thank you for choosing FutsalHub!\n"
-            . "🏃‍♂️⚽ Have a great game!\n\n"
+            . " Have a great game!\n\n"
             . "Regards,\n"
             . "FutsalHub Team";
 
         Mail::raw($emailBody, function ($message) use ($user, $booking) {
             $message->to($user->email, $user->name ?? 'Valued Customer')
-                    ->subject('✅ Bulk Booking Confirmed - FutsalHub #' . $booking->id);
+                    ->subject(' Bulk Booking Confirmed - FutsalHub ' . $booking->id);
         });
         
         Log::info('✓ Bulk confirmation email sent successfully to: ' . $user->email);

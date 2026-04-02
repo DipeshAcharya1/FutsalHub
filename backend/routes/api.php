@@ -37,6 +37,8 @@ Route::get('/futsals/{id}', [FutsalController::class, 'show']);
 Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
 
 
+Route::get('/verify-email/{id}/{token}', [UserController::class, 'verifyEmail']);
+
 // =============================================
 // PROTECTED ROUTES (require authentication)
 // =============================================
@@ -47,6 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/avatar', [UserController::class, 'uploadAvatar']);
     Route::delete('/user/avatar', [UserController::class, 'deleteAvatar']);
     Route::post('/user/change-password', [UserController::class, 'changePassword']);
+     Route::get('/verification-status', [UserController::class, 'checkVerificationStatus']);
+    Route::post('/resend-verification', [UserController::class, 'resendVerification']);
     Route::get('/user/bookings', [BookingController::class, 'getUserBookings']);
     
     // BOOKING ROUTES

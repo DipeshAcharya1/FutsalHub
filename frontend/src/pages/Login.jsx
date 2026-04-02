@@ -49,14 +49,19 @@ const Login = () => {
       navigate("/home");
     }
   } catch (err) {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 403 && err.response?.data?.email_verified === false) {
+      setErrors({ 
+        general: 'Please verify your email address before logging in.'
+      });
+      // Optionally show resend button
+    } else if (err.response?.status === 401) {
       setErrors({ password: err.response.data.message });
     } else if (err.response?.status === 422) {
       setErrors(err.response.data.errors);
     } else {
       setErrors({ general: "Login failed. Please try again." });
     }
-  } finally {
+    } finally {
     setLoading(false);
   }
 };

@@ -11,72 +11,249 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Auth\Events\Registered;
+use Carbon\Carbon;
 
 class UserController extends Controller
 {
 	/**
-	 * Register a new user and return an API token.
-	 */
-	public function register(Request $request): JsonResponse
-	{
-		$data = $request->validate([
-			'name' => 'required|string|max:255',
-			'email' => 'required|email|unique:users,email',
-			'phone' => 'required|string|min:10',
-			'password' => 'required|string|min:8|confirmed',
-		]);
+     * Register a new user and send verification email
+     */
+    public function register(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users,email',
+                'phone' => 'required|string|min:10',
+                'password' => 'required|string|min:8|confirmed',
+            ]);
 
-		$user = User::create([
-			'name' => $data['name'],
-			'email' => $data['email'],
-			'phone' => $data['phone'],
-			'password' => Hash::make($data['password']),
-		]);
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'phone' => $data['phone'],
+                'password' => Hash::make($data['password']),
+                // Do NOT auto-verify - let user verify via email
+            ]);
 
-		$token = $user->createToken('auth_token')->plainTextToken;
+            // Send verification email
+            try {
+                $this->sendVerificationEmail($user);
+            } catch (\Exception $e) {
+                Log::error('Failed to send verification email: ' . $e->getMessage());
+                // Continue registration even if email fails
+            }
 
-		return response()->json([
-			'access_token' => $token,
-			'token_type' => '',
-			'user' => $user,
-		], 201);
-	}
+            $token = $user->createToken('auth_token')->plainTextToken;
 
+            return response()->json([
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'email_verified' => false,
+                ],
+                'message' => 'Registration successful! Please check your email to verify your account.'
+            ], 201);
+            
+        } catch (\Exception $e) {
+            Log::error('Registration error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Registration failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+ * Send verification email to user
+ */
+private function sendVerificationEmail($user)
+{
+    $verificationToken = sha1($user->email);
+    $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+    $verificationUrl = "{$frontendUrl}/verify-email/{$user->id}/{$verificationToken}";
+
+    $subject = "Verify Your Email Address - FutsalHub";
+    
+    $html = "
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Verify Your Email</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+            .header h1 { margin: 0; font-size: 24px; }
+            .content { padding: 30px; }
+            .button { display: inline-block; padding: 12px 30px; background: #4f46e5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: 600; }
+            .footer { text-align: center; padding: 20px; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
+            .warning { background: #fff3cd; padding: 10px; border-radius: 5px; font-size: 12px; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='header'>
+                <h1>FutsalHub</h1>
+                <p>Verify Your Email Address</p>
+            </div>
+            <div class='content'>
+                <h2>Hello {$user->name},</h2>
+                <p>Thank you for registering with FutsalHub! Please verify your email address to start booking futsal slots.</p>
+                <div style='text-align: center;'>
+                    <a href='{$verificationUrl}' class='button'>Verify Email Address</a>
+                </div>
+                <p>Or copy and paste this link into your browser:</p>
+                <p style='word-break: break-all; font-size: 12px; color: #666;'>{$verificationUrl}</p>
+                <div class='warning'>
+                    <strong>⚠️ Note:</strong> This verification link will expire in 60 minutes.
+                </div>
+            </div>
+            <div class='footer'>
+                <p>© 2026 FutsalHub. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    ";
+
+    // FIXED: Use Mail::html() instead of Mail::send()
+    Mail::html($html, function ($message) use ($user, $subject) {
+        $message->to($user->email, $user->name)
+                ->subject($subject);
+    });
+}
+
+    /**
+     * Login user with email verification check
+     */
+    public function login(Request $request): JsonResponse
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+
+        $user = User::where('email', $credentials['email'])->first();
+
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            return response()->json(['message' => 'The provided credentials are incorrect.'], 401);
+        }
+
+        // Check if email is verified
+        if (!$user->email_verified_at) {
+            return response()->json([
+                'message' => 'Please verify your email address before logging in.',
+                'email_verified' => false,
+                'email' => $user->email
+            ], 403);
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        $userFutsalId = DB::table('futsals')
+            ->where('manager_id', $user->id)
+            ->value('id');
+
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'avatar' => $user->avatar,
+                'futsal_id' => $userFutsalId,
+                'email_verified' => true,
+            ]
+        ]);
+    }
+
+    /**
+     * Verify email
+     */
+    public function verifyEmail(Request $request, $id, $token): JsonResponse
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        if (sha1($user->email) !== $token) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid verification token'
+            ], 400);
+        }
+
+        if ($user->email_verified_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email already verified'
+            ], 400);
+        }
+
+        $user->email_verified_at = now();
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email verified successfully! You can now login.'
+        ]);
+    }
 	/**
-	 * Login user and return an API token.
+	 * Check verification status
 	 */
-	public function login(Request $request): JsonResponse
+	public function checkVerificationStatus(Request $request): JsonResponse
 	{
-		$credentials = $request->validate([
-			'email' => 'required|email',
-			'password' => 'required|string',
-		]);
-
-		$user = User::where('email', $credentials['email'])->first();
-
-		if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-			return response()->json(['message' => 'The provided credentials are incorrect.'], 401);
-		}
-
-		$token = $user->createToken('auth_token')->plainTextToken;
-
-		$userFutsalId = DB::table('futsals')
-		->where('manager_id', $user->id)
-		->value('id');
-
+		$user = $request->user();
+		
 		return response()->json([
-			'access_token' => $token,
-			'token_type' => '',
-			'user' => [
-				'id' => $user->id,
-				'name' => $user->name,
-				'email' => $user->email,
-				'role' => $user->role,
-				'avatar' => $user->avatar,
-				'futsal_id' => $userFutsalId,
-			]
+			'success' => true,
+			'email_verified' => !is_null($user->email_verified_at),
+			'email' => $user->email
 		]);
 	}
+
+
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not authenticated'
+            ], 401);
+        }
+
+        if ($user->email_verified_at) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Email already verified'
+            ], 400);
+        }
+
+        $this->sendVerificationEmail($user);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification email sent! Please check your inbox.'
+        ]);
+    }
 
 	/**
 	 * Logout (revoke current token).
