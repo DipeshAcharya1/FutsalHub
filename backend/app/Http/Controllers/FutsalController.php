@@ -156,156 +156,174 @@ class FutsalController extends Controller
     }
 
    /**
-     * Get single futsal details
-     */
-    public function show($id): JsonResponse
-    {
-        try {
-            Log::info('Fetching futsal details for ID: ' . $id);
+ * Get single futsal details
+ */
+public function show($id): JsonResponse
+{
+    try {
+        Log::info('Fetching futsal details for ID: ' . $id);
+        
+        // USE LARAVEL'S BUILT-IN SANCTUM AUTHENTICATION
+        $user = null;
+        
+        // Try to authenticate using Sanctum
+        if (auth('sanctum')->check()) {
+            $user = auth('sanctum')->user();
+            Log::info('User authenticated via Sanctum', ['user_id' => $user->id, 'user_email' => $user->email]);
+        } else {
+            Log::info('No authenticated user via Sanctum');
+        }
+        
+        $futsal = Futsal::find($id);
+
+        if (!$futsal) {
+            Log::error('Futsal not found with ID: ' . $id);
+            return response()->json([
+                'success' => false,
+                'message' => 'Futsal not found'
+            ], 404);
+        }
+
+        // Check if user is restricted
+        $isRestricted = false;
+        $restrictedMessage = null;
+        
+        if ($user) {
+            $restrictedUsers = $futsal->restricted_users ?? [];
             
-            // MANUALLY AUTHENTICATE THE USER FROM BEARER TOKEN
-            $user = null;
-            $token = request()->bearerToken();
-            
-            Log::info('Token check', ['has_token' => !empty($token)]);
-            
-            if ($token) {
-                // The tokens are stored in plain text, not hashed
-                Log::info('Looking for token', ['token_preview' => substr($token, 0, 20) . '...']);
-                
-                // Find the token in personal_access_tokens table (plain text comparison)
-                $tokenRecord = DB::table('personal_access_tokens')
-                    ->where('token', $token)
-                    ->where('expires_at', '>', now()) // Check if not expired
-                    ->orWhereNull('expires_at')
-                    ->first();
-                
-                if ($tokenRecord) {
-                    $user = \App\Models\User::find($tokenRecord->tokenable_id);
-                    Log::info('User authenticated via token', ['user_id' => $user->id]);
-                } else {
-                    Log::info('Invalid or expired token - token not found in database');
-                }
-            } else {
-                Log::info('No bearer token found');
+            if (is_string($restrictedUsers)) {
+                $restrictedUsers = json_decode($restrictedUsers, true) ?: [];
             }
             
-            $futsal = Futsal::find($id);
-
-            if (!$futsal) {
-                Log::error('Futsal not found with ID: ' . $id);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Futsal not found'
-                ], 404);
-            }
-
-            // Check if user is restricted
-            $isRestricted = false;
-            $restrictedMessage = null;
+            // Convert to integers for comparison
+            $restrictedUsers = array_map('intval', $restrictedUsers);
+            $userId = (int)$user->id;
+            $isRestricted = in_array($userId, $restrictedUsers);
             
-            if ($user) {
-                $restrictedUsers = $futsal->restricted_users ?? [];
-                
-                Log::info('Restriction check', [
-                    'user_id' => $user->id,
-                    'restricted_users' => $restrictedUsers,
-                    'is_restricted' => in_array($user->id, $restrictedUsers)
-                ]);
-                
-                $isRestricted = in_array($user->id, $restrictedUsers);
-                if ($isRestricted) {
-                    $restrictedMessage = 'You have been restricted from booking at this futsal. Please contact the administrator.';
-                }
-            }
-
-            // Rest of your code...
-            $today = now()->toDateString();
-            $currentTime = now()->format('H:i:s');
+            Log::info('Restriction check', [
+                'user_id' => $userId,
+                'user_email' => $user->email,
+                'restricted_users' => $restrictedUsers,
+                'is_restricted' => $isRestricted
+            ]);
             
-            $availableSlots = FutsalSlot::with('timeSlot')
-                ->where('futsal_id', $id)
-                ->where('is_available', true)
-                ->where('slot_date', '>=', $today)
-                ->where(function($query) use ($today, $currentTime) {
-                    $query->where('slot_date', '>', $today)
-                        ->orWhere(function($q) use ($today, $currentTime) {
-                            $q->where('slot_date', '=', $today)
-                                ->whereHas('timeSlot', function($timeQ) use ($currentTime) {
-                                    $timeQ->where('start_time', '>', $currentTime);
-                                });
-                        });
-                })
-                ->orderBy('slot_date')
-                ->get();
+            if ($isRestricted) {
+                $restrictedMessage = 'You have been restricted from booking at this futsal. Please contact the administrator.';
+            }
+        }
 
-            $sortedSlots = $availableSlots->sortBy(function($slot) {
-                return $slot->timeSlot->start_time ?? '00:00:00';
-            })->values();
-
-            $mappedSlots = $sortedSlots->map(function($slot) {
-                return [
-                    'id' => $slot->id,
-                    'date' => $slot->slot_date,
-                    'formatted_date' => date('d M Y', strtotime($slot->slot_date)),
-                    'day' => date('l', strtotime($slot->slot_date)),
-                    'start_time' => $slot->timeSlot->start_time ?? null,
-                    'end_time' => $slot->timeSlot->end_time ?? null,
-                    'formatted_time' => ($slot->timeSlot->start_time ?? '') . ' - ' . ($slot->timeSlot->end_time ?? ''),
-                    'price' => (float) $slot->price,
-                    'formatted_price' => 'Rs. ' . number_format($slot->price),
-                    'is_expired' => false,
-                    'is_available' => $slot->is_available,
-                ];
-            });
-
-            $slotsByDate = $mappedSlots->groupBy('date')->map(function($slots, $date) {
-                return [
-                    'date' => $date,
-                    'formatted_date' => $slots->first()['formatted_date'],
-                    'day' => $slots->first()['day'],
-                    'slots' => $slots->values()
-                ];
-            })->values();
-
+        // If user is restricted, return early with restriction message
+        if ($isRestricted) {
             $imageUrl = $futsal->image;
             if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
                 $imageUrl = asset($imageUrl);
             }
-
-            $responseData = [
-                'id' => $futsal->id,
-                'futsal_name' => $futsal->futsal_name,
-                'name' => $futsal->futsal_name,
-                'location' => $futsal->location,
-                'description' => $futsal->description,
-                'contact_number' => $futsal->contact_number,
-                'contact' => $futsal->contact_number,
-                'image' => $imageUrl,
-                'total_slots' => $availableSlots->count(),
-                'slots_by_date' => $slotsByDate,
-                'is_restricted' => $isRestricted,
-                'restricted_message' => $restrictedMessage
-            ];
-
-            Log::info('Response data', ['is_restricted' => $isRestricted]);
-
+            
             return response()->json([
                 'success' => true,
-                'data' => $responseData
+                'data' => [
+                    'id' => $futsal->id,
+                    'futsal_name' => $futsal->futsal_name,
+                    'name' => $futsal->futsal_name,
+                    'location' => $futsal->location,
+                    'description' => $futsal->description,
+                    'contact_number' => $futsal->contact_number,
+                    'contact' => $futsal->contact_number,
+                    'image' => $imageUrl,
+                    'is_restricted' => true,
+                    'restricted_message' => $restrictedMessage,
+                    'slots_by_date' => []
+                ]
             ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error in show method for ID ' . $id . ': ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to load futsal details',
-                'error' => $e->getMessage()
-            ], 500);
         }
+
+        // Continue with normal response for non-restricted users
+        $today = now()->toDateString();
+        $currentTime = now()->format('H:i:s');
+        
+        $availableSlots = FutsalSlot::with('timeSlot')
+            ->where('futsal_id', $id)
+            ->where('is_available', true)
+            ->where('slot_date', '>=', $today)
+            ->where(function($query) use ($today, $currentTime) {
+                $query->where('slot_date', '>', $today)
+                    ->orWhere(function($q) use ($today, $currentTime) {
+                        $q->where('slot_date', '=', $today)
+                            ->whereHas('timeSlot', function($timeQ) use ($currentTime) {
+                                $timeQ->where('start_time', '>', $currentTime);
+                            });
+                    });
+            })
+            ->orderBy('slot_date')
+            ->get();
+
+        $sortedSlots = $availableSlots->sortBy(function($slot) {
+            return $slot->timeSlot->start_time ?? '00:00:00';
+        })->values();
+
+        $mappedSlots = $sortedSlots->map(function($slot) {
+            return [
+                'id' => $slot->id,
+                'date' => $slot->slot_date,
+                'formatted_date' => date('d M Y', strtotime($slot->slot_date)),
+                'day' => date('l', strtotime($slot->slot_date)),
+                'start_time' => $slot->timeSlot->start_time ?? null,
+                'end_time' => $slot->timeSlot->end_time ?? null,
+                'formatted_time' => ($slot->timeSlot->start_time ?? '') . ' - ' . ($slot->timeSlot->end_time ?? ''),
+                'price' => (float) $slot->price,
+                'formatted_price' => 'Rs. ' . number_format($slot->price),
+                'is_expired' => false,
+                'is_available' => $slot->is_available,
+            ];
+        });
+
+        $slotsByDate = $mappedSlots->groupBy('date')->map(function($slots, $date) {
+            return [
+                'date' => $date,
+                'formatted_date' => $slots->first()['formatted_date'],
+                'day' => $slots->first()['day'],
+                'slots' => $slots->values()
+            ];
+        })->values();
+
+        $imageUrl = $futsal->image;
+        if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
+            $imageUrl = asset($imageUrl);
+        }
+
+        $responseData = [
+            'id' => $futsal->id,
+            'futsal_name' => $futsal->futsal_name,
+            'name' => $futsal->futsal_name,
+            'location' => $futsal->location,
+            'description' => $futsal->description,
+            'contact_number' => $futsal->contact_number,
+            'contact' => $futsal->contact_number,
+            'image' => $imageUrl,
+            'total_slots' => $availableSlots->count(),
+            'slots_by_date' => $slotsByDate,
+            'is_restricted' => false,
+            'restricted_message' => null
+        ];
+
+        Log::info('Response data', ['is_restricted' => false, 'user_id' => $user ? $user->id : 'guest']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $responseData
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error in show method for ID ' . $id . ': ' . $e->getMessage());
+        Log::error($e->getTraceAsString());
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to load futsal details',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Get available time slots for a specific date

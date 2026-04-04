@@ -97,6 +97,8 @@ Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
     Route::get('/admin/futsals/{futsal}/users', [AdminDashboardController::class, 'users']);
     Route::get('/admin/futsals/{futsal}/payments', [AdminDashboardController::class, 'payments']);
     Route::get('/admin/futsals/{futsal}/reports', [AdminDashboardController::class, 'reports']);
+    Route::get('/admin/futsals/{futsal}/check-restriction/{userId}', [AdminDashboardController::class, 'checkUserRestriction']);
+
 
     // SUPER ADMIN ROUTES
     Route::prefix('super-admin')->group(function () {
@@ -131,6 +133,8 @@ Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
         
         Route::get('/dashboard', [SuperAdminController::class, 'getDashboardData']);
         Route::get('/activity-logs', [SuperAdminController::class, 'getActivityLogs']);
+
+        Route::get('/reports', [SuperAdminController::class, 'getReports']);
     });
 });
 

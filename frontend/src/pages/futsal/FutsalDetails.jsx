@@ -32,18 +32,31 @@ const FutsalDetails = () => {
     setLoading(true);
     try {
       const response = await api.get(`/futsals/${id}`);
+      console.log('API Response:', response.data); // Debug log
+      
       if (response.data.success) {
-        setFutsal(response.data.data);
-        setIsRestricted(response.data.data.is_restricted || false);
-        setRestrictedMessage(response.data.data.restricted_message || '');
+        const futsalData = response.data.data;
+        setFutsal(futsalData);
         
-        if (response.data.data.slots_by_date && response.data.data.slots_by_date.length > 0) {
-          const dates = response.data.data.slots_by_date.map(item => item.date);
+        // CRITICAL: Read restriction status from API response
+        const restricted = futsalData.is_restricted === true;
+        setIsRestricted(restricted);
+        
+        if (restricted) {
+          setRestrictedMessage(futsalData.restricted_message || 'You have been restricted from booking at this futsal. Please contact the administrator.');
+          console.log('User is restricted:', restricted);
+          console.log('Restriction message:', futsalData.restricted_message);
+          setLoading(false);
+          return; // Don't load slots if restricted
+        }
+        
+        if (futsalData.slots_by_date && futsalData.slots_by_date.length > 0) {
+          const dates = futsalData.slots_by_date.map(item => item.date);
           setAvailableDates(dates);
-          setSlotsByDate(response.data.data.slots_by_date);
+          setSlotsByDate(futsalData.slots_by_date);
           const firstDate = dates[0];
           setSelectedDate(firstDate);
-          setAvailableSlots(response.data.data.slots_by_date.find(item => item.date === firstDate)?.slots || []);
+          setAvailableSlots(futsalData.slots_by_date.find(item => item.date === firstDate)?.slots || []);
         }
       }
     } catch (err) {
@@ -84,6 +97,11 @@ const FutsalDetails = () => {
   };
 
   const toggleSlotSelection = (slot) => {
+    if (isRestricted) {
+      alert(restrictedMessage);
+      return;
+    }
+    
     const isValid = isSlotValid(slot, selectedDate);
     
     if (!isValid) {
@@ -131,7 +149,6 @@ const FutsalDetails = () => {
       });
 
       if (response.data.success) {
-        // Store the transaction data for verification
         if (response.data.transaction_id) {
           localStorage.setItem('last_payment_transaction_id', response.data.transaction_id);
         }
@@ -175,21 +192,12 @@ const FutsalDetails = () => {
       });
 
       if (response.data.success) {
-        // Store the bulk booking data for verification
-        console.log('Bulk payment initiated:', {
-          pidx: response.data.pidx,
-          bulk_booking_id: response.data.bulk_booking_id,
-          payment_url: response.data.payment_url
-        });
-        
-        // Store in localStorage for debugging and verification
         if (response.data.pidx) {
           localStorage.setItem('last_bulk_pidx', response.data.pidx);
         }
         if (response.data.bulk_booking_id) {
           localStorage.setItem('last_bulk_booking_id', response.data.bulk_booking_id);
         }
-        
         window.location.href = response.data.payment_url;
       } else {
         alert(response.data.message || 'Payment initiation failed');
@@ -224,6 +232,25 @@ const FutsalDetails = () => {
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
+  // Show restricted message FIRST if user is restricted
+  if (!loading && isRestricted) {
+    return (
+      <div className="futsal-details-page">
+        <Header />
+        <main className="futsal-details-main">
+          <FutsalHeader futsal={futsal} imageError={imageError} setImageError={setImageError} />
+          <div className="restricted-warning">
+            <div className="warning-icon">🚫</div>
+            <h3>Access Restricted</h3>
+            <p>{restrictedMessage}</p>
+            <button className="back-btn" onClick={() => navigate("/futsals")}>Browse Other Futsals</button>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="futsal-details-page">
@@ -248,24 +275,6 @@ const FutsalDetails = () => {
             <h2>Oops!</h2>
             <p>{error || "Futsal not found"}</p>
             <button className="back-btn" onClick={() => navigate("/futsals")}>Back to Futsals</button>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (isRestricted) {
-    return (
-      <div className="futsal-details-page">
-        <Header />
-        <main className="futsal-details-main">
-          <FutsalHeader futsal={futsal} imageError={imageError} setImageError={setImageError} />
-          <div className="restricted-warning">
-            <div className="warning-icon">⚠️</div>
-            <h3>Booking Restricted</h3>
-            <p>{restrictedMessage}</p>
-            <button className="back-btn" onClick={() => navigate("/futsals")}>Browse Other Futsals</button>
           </div>
         </main>
         <Footer />

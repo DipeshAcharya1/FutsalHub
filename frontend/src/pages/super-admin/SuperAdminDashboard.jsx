@@ -10,6 +10,7 @@ import UsersTab from "./UsersTab";
 import StatsTab from "./StatsTab";
 import FutsalDetailsModal from "./FutsalDetailsModal";
 import FutsalModal from "./FutsalModal";
+import SuperAdminReports from "./SuperAdminReports";
 import "../../styles/SuperAdminDashboard.css";
 
 const SuperAdminDashboard = () => {
@@ -354,6 +355,9 @@ const SuperAdminDashboard = () => {
             <button className={tab === "users" ? "active" : ""} onClick={() => handleTabChange("users")}>
               Users
             </button>
+            <button className={tab === "reports" ? "active" : ""} onClick={() => handleTabChange("reports")}>
+              Reports
+            </button>
           </nav>
 
           {tab === "stats" && (
@@ -403,6 +407,8 @@ const SuperAdminDashboard = () => {
           {tab === "users" && (
             <UsersTab users={users} loading={loading} />
           )}
+
+          {tab === "reports" && <SuperAdminReports />}
         </main>
 
         {showFutsalModal && (

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Models\Futsal;
 
 class AdminDashboardController extends Controller
 {
@@ -350,6 +351,37 @@ private function isUserRestricted($futsal, $userId)
     }
     
     return false;
+}
+
+/**
+ * Check if a user is restricted from this futsal (debug endpoint)
+ */
+public function checkUserRestriction($futsal, $userId): JsonResponse
+{
+    try {
+        $futsal = Futsal::find($futsal);
+        if (!$futsal) {
+            return response()->json(['error' => 'Futsal not found'], 404);
+        }
+        
+        $restrictedUsers = $futsal->restricted_users ?? [];
+        if (is_string($restrictedUsers)) {
+            $restrictedUsers = json_decode($restrictedUsers, true) ?: [];
+        }
+        
+        $isRestricted = in_array((int)$userId, $restrictedUsers);
+        
+        return response()->json([
+            'user_id' => (int)$userId,
+            'futsal_id' => (int)$futsal,
+            'restricted_users' => $restrictedUsers,
+            'is_restricted' => $isRestricted,
+            'message' => $isRestricted ? 'User is restricted from this futsal' : 'User can book at this futsal'
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
 }
 
     // =============================================

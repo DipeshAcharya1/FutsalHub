@@ -702,4 +702,130 @@ class SuperAdminController extends Controller
         ]);
     }
 
+    /**
+     * Generate comprehensive report with refund details
+     */
+    public function getReports(Request $request)
+    {
+        $this->authorizeSuperAdmin($request);
+        
+        $period = $request->get('period', 'monthly');
+        $date = $request->get('date', now()->toDateString());
+        $futsalId = $request->get('futsal_id');
+        
+        // Calculate date range based on period
+        $startDate = null;
+        $endDate = null;
+        
+        if ($period === 'daily') {
+            $startDate = Carbon::parse($date)->startOfDay();
+            $endDate = Carbon::parse($date)->endOfDay();
+        } elseif ($period === 'weekly') {
+            $endDate = Carbon::parse($date)->endOfDay();
+            $startDate = Carbon::parse($date)->subDays(6)->startOfDay();
+        } elseif ($period === 'monthly') {
+            $startDate = Carbon::parse($date)->startOfMonth();
+            $endDate = Carbon::parse($date)->endOfMonth();
+        }
+        
+        // Build bookings query
+        $bookingsQuery = Booking::with(['user', 'futsalSlot.futsal', 'futsalSlot.timeSlot'])
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->where('status', '!=', 'pending');
+            
+        if ($futsalId) {
+            $bookingsQuery->whereHas('futsalSlot.futsal', function($q) use ($futsalId) {
+                $q->where('id', $futsalId);
+            });
+        }
+        
+        $bookings = $bookingsQuery->get();
+        
+        // Calculate overall stats
+        $totalBookings = $bookings->count();
+        $confirmed = $bookings->where('status', 'confirmed')->count();
+        $cancelled = $bookings->where('status', 'cancelled')->count();
+        
+        $pendingRefunds = $bookings->where('refund_status', 'pending')->count();
+        $failedRefunds = $bookings->where('refund_status', 'failed')->count();
+        $completedRefunds = $bookings->where('refund_status', 'completed')->count();
+        
+        $grossRevenue = $bookings->where('status', 'confirmed')->sum(function($b) {
+            return $b->futsalSlot->price;
+        });
+        
+        $refundedAmount = $bookings->where('refund_status', 'completed')->sum('refund_amount');
+        
+        // Futsal wise breakdown
+        $futsalBreakdown = [];
+        $futsals = $futsalId ? Futsal::where('id', $futsalId)->get() : Futsal::all();
+        
+        foreach ($futsals as $futsal) {
+            $futsalBookings = $bookings->filter(function($b) use ($futsal) {
+                return $b->futsalSlot->futsal_id == $futsal->id;
+            });
+            
+            $futsalConfirmed = $futsalBookings->where('status', 'confirmed')->count();
+            $futsalCancelled = $futsalBookings->where('status', 'cancelled')->count();
+            $futsalRevenue = $futsalBookings->where('status', 'confirmed')->sum(function($b) {
+                return $b->futsalSlot->price;
+            });
+            $futsalRefunded = $futsalBookings->where('refund_status', 'completed')->sum('refund_amount');
+            
+            $futsalBreakdown[] = [
+                'futsal_id' => $futsal->id,
+                'futsal_name' => $futsal->futsal_name,
+                'location' => $futsal->location,
+                'total_bookings' => $futsalBookings->count(),
+                'confirmed' => $futsalConfirmed,
+                'cancelled' => $futsalCancelled,
+                'revenue' => $futsalRevenue,
+                'refunded_amount' => $futsalRefunded,
+                'net_revenue' => $futsalRevenue - $futsalRefunded,
+            ];
+        }
+        
+        // Booking details for table
+        $bookingDetails = $bookings->map(function($booking) {
+            return [
+                'id' => $booking->id,
+                'futsal_name' => $booking->futsalSlot->futsal->futsal_name ?? 'N/A',
+                'user_name' => $booking->user->name ?? 'N/A',
+                'user_email' => $booking->user->email ?? 'N/A',
+                'booking_date' => Carbon::parse($booking->booking_date)->format('M d, Y'),
+                'slot_date' => $booking->futsalSlot->slot_date ?? 'N/A',
+                'slot_time' => $booking->futsalSlot->timeSlot ? 
+                    ($booking->futsalSlot->timeSlot->start_time . ' - ' . $booking->futsalSlot->timeSlot->end_time) : 'N/A',
+                'price' => $booking->futsalSlot->price ?? 0,
+                'status' => $booking->status,
+                'payment_status' => $booking->payment_status,
+                'refund_status' => $booking->refund_status ?? 'none',
+                'refund_amount' => $booking->refund_amount ?? 0,
+            ];
+        });
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_bookings' => $totalBookings,
+                'confirmed' => $confirmed,
+                'cancelled' => $cancelled,
+                'pending' => 0,
+                'gross_revenue' => $grossRevenue,
+                'refunded_amount' => $refundedAmount,
+                'net_revenue' => $grossRevenue - $refundedAmount,
+                'pending_refunds' => $pendingRefunds,
+                'failed_refunds' => $failedRefunds,
+                'completed_refunds' => $completedRefunds,
+                'futsal_breakdown' => $futsalBreakdown,
+                'bookings' => $bookingDetails,
+                'period' => $period,
+                'date_range' => [
+                    'start' => $startDate->format('Y-m-d'),
+                    'end' => $endDate->format('Y-m-d')
+                ]
+            ]
+        ]);
+    }
+
 }

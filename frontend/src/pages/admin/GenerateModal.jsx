@@ -122,8 +122,7 @@ const GenerateModal = ({ settings, onGenerate, onClose, loading }) => {
               <h4>Preview</h4>
               <ul>
                 <li>Operating Hours: {settings.open_time} - {settings.close_time}</li>
-                <li>Slot: {settings.slot_duration} min play + {settings.break_time} min break</li>
-                <li><strong>Slots per day: {getSlotsPreview()}</strong></li>
+                <li>Slot: {settings.slot_duration} min play </li>
               </ul>
             </div>
           )}
