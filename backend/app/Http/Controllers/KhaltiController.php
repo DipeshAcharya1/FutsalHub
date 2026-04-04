@@ -758,7 +758,7 @@ private function sendBookingConfirmation($booking)
 }
 
 /**
- * Send bulk booking confirmation email - FIXED
+ * Send bulk booking confirmation email 
  */
 private function sendBulkBookingConfirmation($booking, $userId, $slots)
 {
