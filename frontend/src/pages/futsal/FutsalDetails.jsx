@@ -428,7 +428,7 @@ const FutsalDetails = () => {
                       <span className="total-price">Rs. {getTotalPrice().toLocaleString()}</span>
                     </div>
                     <button 
-                      className="book-multiple-btn"
+                     className="book-multiple-btn"
                       onClick={handleMultipleBooking}
                       disabled={bookingSlotId === 'bulk' || selectedSlots.length === 0}
                     >
@@ -448,4 +448,4 @@ const FutsalDetails = () => {
   );
 };
 
-export default FutsalDetails;
+export default FutsalDetails; 

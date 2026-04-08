@@ -1,4 +1,5 @@
 import React from "react";
+import Pagination from "../../components/Pagination";
 
 const AdminsTab = ({
   admins,
@@ -10,13 +11,23 @@ const AdminsTab = ({
   submitting,
   onCreateAdmin,
   onDeleteAdmin,
+  currentPage,
+  itemsPerPage,
+  onPageChange
 }) => {
+  // Calculate paginated data
+  const totalItems = admins.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAdmins = admins.slice(startIndex, endIndex);
+
   return (
     <section className="tab-content">
       <div className="content-header">
         <h3>Manage Admins</h3>
       </div>
-      {/* Admins List */}
+
       <div className="admins-list-section">
         <h4>Existing Admins</h4>
 
@@ -31,10 +42,10 @@ const AdminsTab = ({
                 <th>Phone</th>
                 <th>Managed Futsal</th>
                 <th>Actions</th>
-              </tr>  
-              </thead>
+              </tr>
+            </thead>
             <tbody>
-              {admins.map((admin) => (
+              {paginatedAdmins.map((admin) => (
                 <tr key={admin.id}>
                   <td><strong>{admin.name}</strong></td>
                   <td>{admin.email}</td>
@@ -45,17 +56,17 @@ const AdminsTab = ({
                     ) : (
                       <span className="no-futsal">No futsal assigned</span>
                     )}
-                  </td>
+                   </td>
                   <td>
-                    <button className="btn-delete" onClick={() => onDeleteAdmin(admin.id)} title="Delete admin">
+                    <button className="btn-delete" onClick={() => onDeleteAdmin(admin.id)}>
                       Delete
                     </button>
-                  </td>
+                   </td>
                 </tr>
               ))}
-              {admins.length === 0 && !loading && (
+              {paginatedAdmins.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="6" className="empty-message">
+                  <td colSpan="5" className="empty-message">
                     No admins found. Create one using the form above.
                   </td>
                 </tr>
@@ -63,7 +74,15 @@ const AdminsTab = ({
             </tbody>
           </table>
         </div>
-        </div>
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={itemsPerPage}
+          onPageChange={onPageChange}
+        />
+      </div>
 
       {/* Create Admin Form */}
       <div className="create-admin-section">
@@ -134,7 +153,7 @@ const AdminsTab = ({
           </div>
 
           <div className="form-group">
-            <label>Assign to Futsal </label>
+            <label>Assign to Futsal</label>
             <select
               value={adminForm.futsal_id}
               onChange={(e) => setAdminForm({ ...adminForm, futsal_id: e.target.value })}
@@ -171,8 +190,6 @@ const AdminsTab = ({
           </div>
         </form>
       </div>
-
-      
     </section>
   );
 };

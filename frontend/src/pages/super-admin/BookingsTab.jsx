@@ -1,6 +1,23 @@
 import React from "react";
+import Pagination from "../../components/Pagination";
 
-const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterChange }) => {
+const BookingsTab = ({ 
+  bookings, 
+  loading, 
+  futsals, 
+  selectedFutsalId, 
+  onFilterChange,
+  currentPage,
+  itemsPerPage,
+  onPageChange
+}) => {
+  // Calculate paginated data
+  const totalItems = bookings.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedBookings = bookings.slice(startIndex, endIndex);
+
   const getRefundStatusBadge = (refundStatus, status) => {
     if (status !== 'cancelled') return null;
     
@@ -16,6 +33,11 @@ const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterCha
     }
   };
 
+  const handleFilterChange = (value) => {
+    onFilterChange(value);
+    onPageChange(1);
+  };
+
   return (
     <section className="tab-content">
       <div className="content-header">
@@ -24,7 +46,7 @@ const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterCha
           <div className="filter-select">
             <select 
               value={selectedFutsalId || ""} 
-              onChange={(e) => onFilterChange(e.target.value || null)}
+              onChange={(e) => handleFilterChange(e.target.value || null)}
               className="filter-select"
             >
               <option value="">All Futsals</option>
@@ -53,9 +75,9 @@ const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterCha
               <th>Payment</th>
               <th>Refund Status</th>
             </tr>
-            </thead>
+          </thead>
           <tbody>
-            {bookings.map((b) => (
+            {paginatedBookings.map((b) => (
               <tr key={b.id} className={b.status === 'cancelled' ? 'cancelled-booking' : ''}>
                 <td>
                   <div><strong>{b.user_name}</strong></div>
@@ -83,7 +105,7 @@ const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterCha
                 </td>
               </tr>
             ))}
-            {bookings.length === 0 && !loading && (
+            {paginatedBookings.length === 0 && !loading && (
               <tr>
                 <td colSpan="8" className="empty-message">No bookings found</td>
               </tr>
@@ -91,6 +113,14 @@ const BookingsTab = ({ bookings, loading, futsals, selectedFutsalId, onFilterCha
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={totalItems}
+        itemsPerPage={itemsPerPage}
+        onPageChange={onPageChange}
+      />
     </section>
   );
 };

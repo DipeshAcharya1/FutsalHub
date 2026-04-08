@@ -38,9 +38,9 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        console.log('✅ Google Maps script loaded');
+        console.log(' Google Maps script loaded');
       };
-      script.onerror = () => console.error('❌ Failed to load Google Maps script');
+      script.onerror = () => console.error(' Failed to load Google Maps script');
       document.head.appendChild(script);
     } else {
       // Script already loading or loaded, wait for it
@@ -57,12 +57,12 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
 
   const initMap = () => {
     if (!mapRef.current) {
-      console.error('❌ Map container not found');
+      console.error(' Map container not found');
       return;
     }
 
     if (!window.google) {
-      console.error('❌ Google Maps not loaded');
+      console.error(' Google Maps not loaded');
       return;
     }
 
@@ -103,7 +103,7 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
       title: futsalName || 'Futsal Location',
     });
     
-    console.log('✅ Map created successfully');
+    console.log('Map created successfully');
   };
 
   const geocodeAddress = (address) => {
@@ -113,15 +113,15 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
     geocoder.geocode({ address: address }, (results, status) => {
       if (status === 'OK' && results && results[0]) {
         const location = results[0].geometry.location;
-        console.log('✅ Geocoding success:', location.lat(), location.lng());
+        console.log('Geocoding success:', location.lat(), location.lng());
         createMap({ lat: location.lat(), lng: location.lng() });
       } else {
-        console.error('❌ Geocoding failed:', status);
+        console.error('Geocoding failed:', status);
         
         if (mapRef.current) {
           mapRef.current.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; padding: 20px; text-align: center;">
-              <p style="margin-bottom: 10px;">📍 Could not find location: ${address}</p>
+              <p style="margin-bottom: 10px;"> Could not find location: ${address}</p>
               <p style="font-size: 12px; color: #666;">Please check the address or add coordinates manually.</p>
             </div>
           `;

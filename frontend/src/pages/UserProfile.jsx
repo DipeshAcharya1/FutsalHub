@@ -612,7 +612,7 @@ const UserProfile = () => {
                             return (
                               <tr key={item.id} className="booking-row bulk-row">
                                 <td className="futsal-info">
-                                  <strong>📦 {item.futsal_name}</strong>
+                                  <strong> {item.futsal_name}</strong>
                                   <small>{item.location}</small>
                                   <span className="bulk-badge">{item.total_slots} slots • Rs. {item.total_amount}</span>
                                  </td>

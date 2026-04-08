@@ -50,6 +50,17 @@ const AdminDashboard = () => {
   const [availableStartTimes, setAvailableStartTimes] = useState([]);
   const [availableEndTimes, setAvailableEndTimes] = useState([]);
 
+  // Pagination states
+  const [slotsPage, setSlotsPage] = useState(1);
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [paymentsPage, setPaymentsPage] = useState(1);
+  const [usersPage, setUsersPage] = useState(1);
+  
+  const [slotsPerPage, setSlotsPerPage] = useState(10);
+  const [bookingsPerPage, setBookingsPerPage] = useState(10);
+  const [paymentsPerPage, setPaymentsPerPage] = useState(10);
+  const [usersPerPage, setUsersPerPage] = useState(10);
+
   // Modal states
   const [editingFutsal, setEditingFutsal] = useState(false);
   const [showSlotModal, setShowSlotModal] = useState(false);
@@ -181,6 +192,7 @@ const AdminDashboard = () => {
         showSuccess(response.data.message);
         await loadSlots();
         setShowGenerateModal(false);
+        setSlotsPage(1);
       }
     } catch (err) {
       setError(err.response?.data?.error || "Failed to generate slots");
@@ -221,6 +233,7 @@ const AdminDashboard = () => {
         }
       }
       setSlots(slotsData);
+      setSlotsPage(1);
     } catch (err) {
       console.error("Failed to load slots:", err);
       setError("Failed to load slots.");
@@ -234,6 +247,7 @@ const AdminDashboard = () => {
     try {
       const res = await api.get("/admin/futsals/" + futsalId + "/bookings");
       setBookings(Array.isArray(res.data) ? res.data : res.data.data || []);
+      setBookingsPage(1);
     } catch (err) {
       setError("Failed to load bookings.");
     } finally {
@@ -246,6 +260,7 @@ const AdminDashboard = () => {
     try {
       const res = await api.get("/admin/futsals/" + futsalId + "/payments");
       setPayments(Array.isArray(res.data) ? res.data : res.data.data || []);
+      setPaymentsPage(1);
     } catch (err) {
       setError("Failed to load payments.");
     } finally {
@@ -258,6 +273,7 @@ const AdminDashboard = () => {
     try {
       const res = await api.get("/admin/futsals/" + futsalId + "/users");
       setUsers(Array.isArray(res.data) ? res.data : res.data.data || []);
+      setUsersPage(1);
     } catch (err) {
       setError("Failed to load users.");
     } finally {
@@ -597,6 +613,12 @@ const AdminDashboard = () => {
             onDeleteSlot={deleteSlot}
             onOpenSettings={() => setShowSettingsModal(true)}
             onOpenGenerate={() => setShowGenerateModal(true)}
+            currentPage={slotsPage}
+            itemsPerPage={slotsPerPage}
+            onPageChange={(page, perPage) => {
+              if (perPage) setSlotsPerPage(perPage);
+              setSlotsPage(page);
+            }}
           />
         )}
 
@@ -607,11 +629,26 @@ const AdminDashboard = () => {
             bookingFilter={bookingFilter}
             setBookingFilter={setBookingFilter}
             updateBookingStatus={updateBookingStatus}
+            currentPage={bookingsPage}
+            itemsPerPage={bookingsPerPage}
+            onPageChange={(page, perPage) => {
+              if (perPage) setBookingsPerPage(perPage);
+              setBookingsPage(page);
+            }}
           />
         )}
 
         {tab === "payments" && (
-          <AdminPayments payments={payments} totalRevenue={totalRevenue} />
+          <AdminPayments 
+            payments={payments} 
+            totalRevenue={totalRevenue}
+            currentPage={paymentsPage}
+            itemsPerPage={paymentsPerPage}
+            onPageChange={(page, perPage) => {
+              if (perPage) setPaymentsPerPage(perPage);
+              setPaymentsPage(page);
+            }}
+          />
         )}
 
         {tab === "users" && (
@@ -621,6 +658,12 @@ const AdminDashboard = () => {
             onUserUpdated={() => {
               loadUsers();
               loadBookings();
+            }}
+            currentPage={usersPage}
+            itemsPerPage={usersPerPage}
+            onPageChange={(page, perPage) => {
+              if (perPage) setUsersPerPage(perPage);
+              setUsersPage(page);
             }}
           />
         )}

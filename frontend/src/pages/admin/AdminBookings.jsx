@@ -1,9 +1,45 @@
 import React, { useEffect, useState } from "react";
+import Pagination from "../../components/Pagination";
 
 const AdminBookings = ({ 
-  bookings, filteredBookings, bookingFilter, setBookingFilter 
+  bookings, filteredBookings, bookingFilter, setBookingFilter,
+  currentPage,
+  itemsPerPage,
+  onPageChange
 }) => {
   const filters = ["all", "confirmed", "cancelled"];
+
+  // Pagination state (local if not provided as props)
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
+  const [localItemsPerPage, setLocalItemsPerPage] = useState(10);
+
+  // Use props if provided, otherwise use local state
+  const activePage = currentPage !== undefined ? currentPage : localCurrentPage;
+  const activeItemsPerPage = itemsPerPage !== undefined ? itemsPerPage : localItemsPerPage;
+
+  // Calculate paginated data
+  const totalItems = filteredBookings.length;
+  const totalPages = Math.ceil(totalItems / activeItemsPerPage);
+  const startIndex = (activePage - 1) * activeItemsPerPage;
+  const endIndex = startIndex + activeItemsPerPage;
+  const paginatedBookings = filteredBookings.slice(startIndex, endIndex);
+
+  const handlePageChange = (page, newItemsPerPage = null) => {
+    if (newItemsPerPage) {
+      if (onPageChange) {
+        onPageChange(1, newItemsPerPage);
+      } else {
+        setLocalItemsPerPage(newItemsPerPage);
+        setLocalCurrentPage(1);
+      }
+    } else {
+      if (onPageChange) {
+        onPageChange(page);
+      } else {
+        setLocalCurrentPage(page);
+      }
+    }
+  };
 
   // Debug: Log all bookings with refund data
   useEffect(() => {
@@ -12,6 +48,15 @@ const AdminBookings = ({
     );
     console.log('All cancelled bookings with refunds:', cancelledWithRefunds);
   }, [bookings]);
+
+  // Reset to first page when filter changes
+  useEffect(() => {
+    if (onPageChange) {
+      onPageChange(1);
+    } else {
+      setLocalCurrentPage(1);
+    }
+  }, [bookingFilter]);
 
   const isBookingExpired = (booking) => {
     if (!booking.slot_time) return false;
@@ -125,10 +170,10 @@ const AdminBookings = ({
                 <th>Refund Status</th>
                 <th>Cancellation Info</th>
                 <th>Notes</th>
-              </tr>  
-              </thead>
+              </tr>
+            </thead>
             <tbody>
-              {filteredBookings.map(booking => {
+              {paginatedBookings.map(booking => {
                 const isExpired = isBookingExpired(booking);
                 const isCancelled = booking.status === 'cancelled';
                 
@@ -147,17 +192,13 @@ const AdminBookings = ({
                     </td>
                     <td><strong>{booking.slot_time || "N/A"}</strong></td>
                     <td>{booking.booking_date || "N/A"}</td>
-                    <td>
-                      {getStatusBadge(booking)}
-                    </td>
+                    <td>{getStatusBadge(booking)}</td>
                     <td>
                       <span className={"status-badge status-" + (booking.payment_status || "unknown")}>
                         {booking.payment_status === 'paid' ? '✓ Paid' : (booking.payment_status || 'N/A')}
                       </span>
                     </td>
-                    <td>
-                      {getRefundStatusBadge(booking)}
-                    </td>
+                    <td>{getRefundStatusBadge(booking)}</td>
                     <td>
                       {isCancelled && booking.refunded_at && (
                         <div className="cancellation-info">
@@ -196,7 +237,7 @@ const AdminBookings = ({
                   </tr>
                 );
               })}
-              {filteredBookings.length === 0 && (
+              {paginatedBookings.length === 0 && (
                 <tr>
                   <td colSpan="9" className="empty-row">No bookings found.</td>
                 </tr>
@@ -204,6 +245,15 @@ const AdminBookings = ({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Component */}
+        <Pagination
+          currentPage={activePage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={activeItemsPerPage}
+          onPageChange={handlePageChange}
+        />
       </div>
     </div>
   );

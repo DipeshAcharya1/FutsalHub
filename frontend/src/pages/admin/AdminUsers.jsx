@@ -1,13 +1,46 @@
 import React, { useState } from "react";
 import api from "../../api/axios";
+import Pagination from "../../components/Pagination";
 
-const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
+const AdminUsers = ({ users, futsalId, onUserUpdated, currentPage, itemsPerPage, onPageChange }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [userBookings, setUserBookings] = useState([]);
   const [userStats, setUserStats] = useState(null);
   const [loadingUserData, setLoadingUserData] = useState(false);
   const [restricting, setRestricting] = useState(false);
+  
+  // Use local state if props not provided
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
+  const [localItemsPerPage, setLocalItemsPerPage] = useState(10);
+
+  // Use props if provided, otherwise use local state
+  const activePage = currentPage !== undefined ? currentPage : localCurrentPage;
+  const activeItemsPerPage = itemsPerPage !== undefined ? itemsPerPage : localItemsPerPage;
+
+  // Calculate paginated data
+  const totalItems = users.length;
+  const totalPages = Math.ceil(totalItems / activeItemsPerPage);
+  const startIndex = (activePage - 1) * activeItemsPerPage;
+  const endIndex = startIndex + activeItemsPerPage;
+  const paginatedUsers = users.slice(startIndex, endIndex);
+
+  const handlePageChange = (page, newItemsPerPage = null) => {
+    if (newItemsPerPage) {
+      if (onPageChange) {
+        onPageChange(1, newItemsPerPage);
+      } else {
+        setLocalItemsPerPage(newItemsPerPage);
+        setLocalCurrentPage(1);
+      }
+    } else {
+      if (onPageChange) {
+        onPageChange(page);
+      } else {
+        setLocalCurrentPage(page);
+      }
+    }
+  };
 
   const handleViewUser = async (user) => {
     setSelectedUser(user);
@@ -67,9 +100,6 @@ const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
       setShowUserModal(false);
       setSelectedUser(null);
       if (onUserUpdated) onUserUpdated();
-    } catch (error) {
-      console.error('Failed to unrestrict user:', error);
-      alert('Failed to update user status. Please try again.');
     } finally {
       setRestricting(false);
     }
@@ -94,7 +124,7 @@ const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
+              {paginatedUsers.map(u => (
                 <tr key={u.id}>
                   <td><strong>{u.name || "N/A"}</strong></td>
                   <td>{u.email || "N/A"}</td>
@@ -109,12 +139,21 @@ const AdminUsers = ({ users, futsalId, onUserUpdated }) => {
                   </td>
                 </tr>
               ))}
-              {users.length === 0 && (
-                <tr><td colSpan="6" className="empty-row">No users found.</td></tr>
+              {paginatedUsers.length === 0 && (
+                <tr><td colSpan="4" className="empty-row">No users found.</td></tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={activePage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={activeItemsPerPage}
+          onPageChange={handlePageChange}
+        />
       </div>
 
       {/* User Details Modal */}

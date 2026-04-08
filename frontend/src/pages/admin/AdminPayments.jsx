@@ -1,12 +1,45 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import Pagination from "../../components/Pagination";
 
-const AdminPayments = ({ payments, totalRevenue }) => {
+const AdminPayments = ({ payments, totalRevenue, currentPage, itemsPerPage, onPageChange }) => {
+  // Use local state if props not provided
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
+  const [localItemsPerPage, setLocalItemsPerPage] = useState(10);
+
+  // Use props if provided, otherwise use local state
+  const activePage = currentPage !== undefined ? currentPage : localCurrentPage;
+  const activeItemsPerPage = itemsPerPage !== undefined ? itemsPerPage : localItemsPerPage;
+
   // Calculate refund statistics
   const refundedPayments = payments.filter(p => p.refund_status === 'completed');
   const totalRefunded = refundedPayments.reduce((sum, p) => sum + parseFloat(p.refund_amount || 0), 0);
   const netRevenue = totalRevenue - totalRefunded;
   const pendingRefunds = payments.filter(p => p.refund_status === 'pending').length;
   const failedRefunds = payments.filter(p => p.refund_status === 'failed').length;
+
+  // Calculate paginated data
+  const totalItems = payments.length;
+  const totalPages = Math.ceil(totalItems / activeItemsPerPage);
+  const startIndex = (activePage - 1) * activeItemsPerPage;
+  const endIndex = startIndex + activeItemsPerPage;
+  const paginatedPayments = payments.slice(startIndex, endIndex);
+
+  const handlePageChange = (page, newItemsPerPage = null) => {
+    if (newItemsPerPage) {
+      if (onPageChange) {
+        onPageChange(1, newItemsPerPage);
+      } else {
+        setLocalItemsPerPage(newItemsPerPage);
+        setLocalCurrentPage(1);
+      }
+    } else {
+      if (onPageChange) {
+        onPageChange(page);
+      } else {
+        setLocalCurrentPage(page);
+      }
+    }
+  };
 
   return (
     <div>
@@ -15,6 +48,7 @@ const AdminPayments = ({ payments, totalRevenue }) => {
         All payment transactions including refunds.
       </p>
 
+      {/* Statistics Cards */}
       <div className="stats-row" style={{ marginBottom: 24 }}>
         <div className="stat-box">
           <div className="stat-label">Gross Revenue</div>
@@ -34,6 +68,7 @@ const AdminPayments = ({ payments, totalRevenue }) => {
         </div>
       </div>
 
+      {/* Alert Messages */}
       {pendingRefunds > 0 && (
         <div className="alert alert-warning" style={{ marginBottom: 16 }}>
           ⏳ {pendingRefunds} payment(s) have pending refunds. Please check Khalti dashboard.
@@ -46,6 +81,7 @@ const AdminPayments = ({ payments, totalRevenue }) => {
         </div>
       )}
 
+      {/* Payments Table */}
       <div className="card">
         <div className="table-responsive">
           <table className="data-table">
@@ -61,10 +97,10 @@ const AdminPayments = ({ payments, totalRevenue }) => {
                 <th>Refund Status</th>
                 <th>Refund Amount</th>
                 <th>Payment Date</th>
-              </tr>  
-              </thead>
+              </tr>
+            </thead>
             <tbody>
-              {payments.map(p => {
+              {paginatedPayments.map(p => {
                 const isRefunded = p.refund_status === 'completed';
                 const isRefundPending = p.refund_status === 'pending';
                 const isRefundFailed = p.refund_status === 'failed';
@@ -122,7 +158,7 @@ const AdminPayments = ({ payments, totalRevenue }) => {
                   </tr>
                 );
               })}
-              {payments.length === 0 && (
+              {paginatedPayments.length === 0 && (
                 <tr>
                   <td colSpan="10" className="empty-row">No payment records found.</td>
                 </tr>
@@ -130,6 +166,15 @@ const AdminPayments = ({ payments, totalRevenue }) => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={activePage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={activeItemsPerPage}
+          onPageChange={handlePageChange}
+        />
       </div>
 
       {/* Refund Summary Section */}

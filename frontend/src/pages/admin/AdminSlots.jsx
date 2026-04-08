@@ -1,8 +1,31 @@
 import React, { useState } from "react";
+import Pagination from "../../components/Pagination";
 
-const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggleSlot, onDeleteSlot, bookings, onOpenSettings, onOpenGenerate }) => {
+const AdminSlots = ({ 
+  slots, 
+  canModify, 
+  settings, 
+  onAddSlot, 
+  onEditSlot, 
+  onToggleSlot, 
+  onDeleteSlot, 
+  bookings, 
+  onOpenSettings, 
+  onOpenGenerate,
+  currentPage,
+  itemsPerPage,
+  onPageChange
+}) => {
   const [showExpired, setShowExpired] = useState(false);
   
+  // Use local state if props not provided
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
+  const [localItemsPerPage, setLocalItemsPerPage] = useState(10);
+
+  // Use props if provided, otherwise use local state
+  const activePage = currentPage !== undefined ? currentPage : localCurrentPage;
+  const activeItemsPerPage = itemsPerPage !== undefined ? itemsPerPage : localItemsPerPage;
+
   const handleToggle = async (slot) => {
     try {
       await onToggleSlot(slot);
@@ -49,16 +72,48 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
 
   const today = new Date().toISOString().split('T')[0];
   
+  // Filter slots based on showExpired toggle
   const filteredSlots = showExpired 
     ? slots 
     : slots.filter(slot => slot.slot_date >= today);
+
+  // Sort slots by date and time
+  const sortedSlots = [...filteredSlots].sort((a, b) => {
+    if (a.slot_date !== b.slot_date) {
+      return a.slot_date.localeCompare(b.slot_date);
+    }
+    return (a.start_time || '').localeCompare(b.start_time || '');
+  });
+
+  // Calculate paginated data
+  const totalItems = sortedSlots.length;
+  const totalPages = Math.ceil(totalItems / activeItemsPerPage);
+  const startIndex = (activePage - 1) * activeItemsPerPage;
+  const endIndex = startIndex + activeItemsPerPage;
+  const paginatedSlots = sortedSlots.slice(startIndex, endIndex);
+
+  const handlePageChange = (page, newItemsPerPage = null) => {
+    if (newItemsPerPage) {
+      if (onPageChange) {
+        onPageChange(1, newItemsPerPage);
+      } else {
+        setLocalItemsPerPage(newItemsPerPage);
+        setLocalCurrentPage(1);
+      }
+    } else {
+      if (onPageChange) {
+        onPageChange(page);
+      } else {
+        setLocalCurrentPage(page);
+      }
+    }
+  };
 
   const getSlotsPreview = () => {
     if (!settings) return 0;
     const start = settings.open_time.split(':').map(Number);
     const end = settings.close_time.split(':').map(Number);
     const totalMinutes = (end[0] * 60 + end[1]) - (start[0] * 60 + start[1]);
-    // No break time - slots run continuously
     return Math.floor(totalMinutes / settings.slot_duration);
   };
 
@@ -88,7 +143,10 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
           )}
           <button 
             className={`btn ${showExpired ? 'btn-secondary' : 'btn-primary'}`}
-            onClick={() => setShowExpired(!showExpired)}
+            onClick={() => {
+              setShowExpired(!showExpired);
+              handlePageChange(1);
+            }}
             style={{ fontSize: '14px' }}
           >
             {showExpired ? "Hide Expired" : "Show Expired"}
@@ -133,8 +191,8 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
               </tr>
             </thead>
             <tbody>
-              {filteredSlots.length > 0 ? (
-                filteredSlots.map(slot => {
+              {paginatedSlots.length > 0 ? (
+                paginatedSlots.map(slot => {
                   const available = isAvailable(slot);
                   const expired = isExpired(slot);
                   const bookingStatus = getSlotBookingStatus(slot.id);
@@ -191,16 +249,31 @@ const AdminSlots = ({ slots, canModify, settings, onAddSlot, onEditSlot, onToggl
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={activePage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={activeItemsPerPage}
+          onPageChange={handlePageChange}
+        />
       </div>
+      
+      {!showExpired && filteredSlots.length > 0 && totalItems > activeItemsPerPage && (
+        <div style={{ marginTop: '15px', textAlign: 'center', color: '#6c757d', fontSize: '12px' }}>
+          Showing {paginatedSlots.length} of {totalItems} upcoming slots.
+        </div>
+      )}
       
       {!showExpired && filteredSlots.length > 0 && (
         <div style={{ marginTop: '15px', textAlign: 'center', color: '#6c757d', fontSize: '12px' }}>
-          Showing only upcoming slots. <button 
+          <button 
             onClick={() => setShowExpired(true)} 
             style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', textDecoration: 'underline' }}
           >
             Click here
-          </button> to view expired slots.
+          </button> to view all slots including expired ones.
         </div>
       )}
     </div>

@@ -17,10 +17,9 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // Get tab from URL or default to "stats"
   const getTabFromUrl = () => {
     const tabParam = searchParams.get('tab');
-    const validTabs = ['stats', 'futsals', 'admins', 'bookings', 'users'];
+    const validTabs = ['stats', 'futsals', 'admins', 'bookings', 'users', 'reports'];
     return tabParam && validTabs.includes(tabParam) ? tabParam : 'stats';
   };
 
@@ -38,6 +37,16 @@ const SuperAdminDashboard = () => {
   const [editingFutsal, setEditingFutsal] = useState(null);
   const [selectedFutsal, setSelectedFutsal] = useState(null);
   const [selectedFutsalId, setSelectedFutsalId] = useState(null);
+  
+  // Pagination states
+  const [futsalsPage, setFutsalsPage] = useState(1);
+  const [adminsPage, setAdminsPage] = useState(1);
+  const [bookingsPage, setBookingsPage] = useState(1);
+  const [usersPage, setUsersPage] = useState(1);
+  const [futsalsPerPage, setFutsalsPerPage] = useState(3);
+  const [adminsPerPage, setAdminsPerPage] = useState(5);
+  const [bookingsPerPage, setBookingsPerPage] = useState(10);
+  const [usersPerPage, setUsersPerPage] = useState(10);
   
   // Admin form state
   const [adminForm, setAdminForm] = useState({
@@ -63,7 +72,6 @@ const SuperAdminDashboard = () => {
     image: null
   });
 
-  // Update URL when tab changes
   const handleTabChange = (newTab) => {
     setTab(newTab);
     setSearchParams({ tab: newTab });
@@ -74,7 +82,6 @@ const SuperAdminDashboard = () => {
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Load all data
   const loadFutsals = async () => {
     try {
       const res = await api.get("/super-admin/futsals");
@@ -147,14 +154,13 @@ const SuperAdminDashboard = () => {
     loadUsers();
   }, []);
 
-  // Handle futsal filter change
   const handleFutsalFilter = (futsalId) => {
     setSelectedFutsalId(futsalId);
     loadStats(futsalId);
     loadBookings(futsalId);
+    setBookingsPage(1);
   };
 
-  // Admin functions
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
     setError(null);
@@ -186,6 +192,7 @@ const SuperAdminDashboard = () => {
       showSuccess("Admin created successfully");
       loadAdmins();
       loadFutsals();
+      setAdminsPage(1);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to create admin");
       if (err.response?.data?.errors) setFormErrors(err.response.data.errors);
@@ -206,7 +213,6 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  // Futsal functions
   const openAddFutsal = () => {
     setEditingFutsal(null);
     setFutsalForm({
@@ -266,6 +272,7 @@ const SuperAdminDashboard = () => {
       setShowFutsalModal(false);
       loadFutsals();
       loadAdmins();
+      setFutsalsPage(1);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to save futsal");
     } finally {
@@ -322,7 +329,6 @@ const SuperAdminDashboard = () => {
           {error && <div className="alert alert-error">{error}</div>}
           {successMsg && <div className="alert alert-success">{successMsg}</div>}
 
-          {/* Futsal Filter */}
           <div className="filter-bar">
             <label>Filter by Futsal:</label>
             <select 
@@ -385,6 +391,12 @@ const SuperAdminDashboard = () => {
               onView={loadFutsalDetails}
               onToggle={toggleFutsalActive}
               onDelete={deleteFutsal}
+              currentPage={futsalsPage}
+              itemsPerPage={futsalsPerPage}
+              onPageChange={(page, perPage) => {
+                if (perPage) setFutsalsPerPage(perPage);
+                setFutsalsPage(page);
+              }}
             />
           )}
 
@@ -399,6 +411,12 @@ const SuperAdminDashboard = () => {
               submitting={submitting}
               onCreateAdmin={handleCreateAdmin}
               onDeleteAdmin={handleDeleteAdmin}
+              currentPage={adminsPage}
+              itemsPerPage={adminsPerPage}
+              onPageChange={(page, perPage) => {
+                if (perPage) setAdminsPerPage(perPage);
+                setAdminsPage(page);
+              }}
             />
           )}
 
@@ -409,11 +427,26 @@ const SuperAdminDashboard = () => {
               futsals={futsals}
               selectedFutsalId={selectedFutsalId}
               onFilterChange={handleFutsalFilter}
+              currentPage={bookingsPage}
+              itemsPerPage={bookingsPerPage}
+              onPageChange={(page, perPage) => {
+                if (perPage) setBookingsPerPage(perPage);
+                setBookingsPage(page);
+              }}
             />
           )}
 
           {tab === "users" && (
-            <UsersTab users={users} loading={loading} />
+            <UsersTab 
+              users={users} 
+              loading={loading}
+              currentPage={usersPage}
+              itemsPerPage={usersPerPage}
+              onPageChange={(page, perPage) => {
+                if (perPage) setUsersPerPage(perPage);
+                setUsersPage(page);
+              }}
+            />
           )}
 
           {tab === "reports" && <SuperAdminReports />}
