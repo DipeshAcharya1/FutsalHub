@@ -1,24 +1,36 @@
 import React, { useState, useEffect, useRef } from "react";
+import { getGoogleMapsKey } from "../../api/config";
 
 // Global script tracking for Google Maps
 let googleMapsScriptLoaded = false;
 let googleMapsScriptLoading = false;
-const GOOGLE_MAPS_API_KEY = 'AIzaSyAa8MjvvJQ6zcjVqIkZCpwGl9EJX0IYBA0';
 
 const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave, onClose, loading }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const [showMap, setShowMap] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapsApiKey, setMapsApiKey] = useState('');
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
 
-  // Load Google Maps once
+  // Fetch Google Maps API key from backend
   useEffect(() => {
+    const loadApiKey = async () => {
+      const key = await getGoogleMapsKey();
+      setMapsApiKey(key);
+    };
+    loadApiKey();
+  }, []);
+
+  // Load Google Maps once key is available
+  useEffect(() => {
+    if (!mapsApiKey) return;
+    
     if (!window.google && !googleMapsScriptLoading && !googleMapsScriptLoaded) {
       googleMapsScriptLoading = true;
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places&loading=async`;
       script.async = true;
       script.defer = true;
       script.onload = () => {
@@ -26,11 +38,15 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
         googleMapsScriptLoading = false;
         setMapLoaded(true);
       };
+      script.onerror = () => {
+        console.error('Failed to load Google Maps');
+        googleMapsScriptLoading = false;
+      };
       document.head.appendChild(script);
     } else if (window.google) {
       setMapLoaded(true);
     }
-  }, []);
+  }, [mapsApiKey]);
 
   // Handle image preview
   useEffect(() => {
@@ -92,6 +108,34 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
         latitude: position.lat().toFixed(6), 
         longitude: position.lng().toFixed(6) 
       });
+    });
+  };
+
+  const geocodeAddress = () => {
+    if (!futsalForm.location) {
+      alert('Please enter a location address first');
+      return;
+    }
+    
+    if (!window.google) {
+      alert('Google Maps is still loading. Please try again in a moment.');
+      return;
+    }
+    
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address: futsalForm.location }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const lat = results[0].geometry.location.lat();
+        const lng = results[0].geometry.location.lng();
+        setFutsalForm({
+          ...futsalForm,
+          latitude: lat.toFixed(6),
+          longitude: lng.toFixed(6)
+        });
+        alert('✓ Coordinates fetched from address! You can now show the map.');
+      } else {
+        alert('Could not find coordinates for this address. Please enter manually.');
+      }
     });
   };
 
@@ -192,6 +236,26 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
                 placeholder="e.g., 85.3240"
               />
             </div>
+          </div>
+
+          {/* Auto-fetch Coordinates Button */}
+          <div style={{ marginBottom: '15px' }}>
+            <button
+              type="button"
+              onClick={geocodeAddress}
+              style={{
+                background: '#28a745',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                marginRight: '10px'
+              }}
+            >
+              🌍 Auto-fetch Coordinates from Address
+            </button>
           </div>
 
           {/* Get Coordinates Help */}

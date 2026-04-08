@@ -1,22 +1,28 @@
-import React, { useEffect, useRef } from 'react';
-
-const GOOGLE_MAPS_API_KEY = 'AIzaSyAa8MjvvJQ6zcjVqIkZCpwGl9EJX0IYBA0';
+import React, { useEffect, useRef, useState } from 'react';
+import { getGoogleMapsKey } from '../api/config';
 
 // Track if script is already loaded
 let scriptLoaded = false;
 
 const MapComponent = ({ location, latitude, longitude, futsalName }) => {
+  const [mapsApiKey, setMapsApiKey] = useState('');
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
 
+  // Fetch Google Maps API key from backend
   useEffect(() => {
+    const loadApiKey = async () => {
+      const key = await getGoogleMapsKey();
+      setMapsApiKey(key);
+    };
+    loadApiKey();
+  }, []);
+
+  useEffect(() => {
+    if (!mapsApiKey) return;
+    
     console.log('MapComponent - Location:', location);
     console.log('MapComponent - Coordinates:', latitude, longitude);
-
-    if (!GOOGLE_MAPS_API_KEY) {
-      console.error('❌ Google Maps API key is missing!');
-      return;
-    }
 
     // Check if Google Maps is already loaded
     if (window.google && window.google.maps) {
@@ -28,7 +34,7 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
     if (!scriptLoaded) {
       scriptLoaded = true;
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=initMap`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places&callback=initMap`;
       script.async = true;
       script.defer = true;
       script.onload = () => {
@@ -47,7 +53,7 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
     }
 
     window.initMap = initMap;
-  }, [location, latitude, longitude]);
+  }, [mapsApiKey, location, latitude, longitude]);
 
   const initMap = () => {
     if (!mapRef.current) {
@@ -91,7 +97,6 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
       center: center,
     });
 
-    // Use AdvancedMarkerElement to avoid deprecation warning (optional)
     new window.google.maps.Marker({
       position: center,
       map: mapInstanceRef.current,

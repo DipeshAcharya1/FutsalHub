@@ -35,7 +35,7 @@ Route::get('/futsals', [FutsalController::class, 'index']);
 Route::get('/futsals/locations', [FutsalController::class, 'getLocations']); 
 Route::get('/futsals/{id}', [FutsalController::class, 'show']);
 Route::get('/futsals/{futsalId}/available-slots', [FutsalController::class, 'getAvailableSlots']);
-
+Route::get('/config/google-maps-key', function () {return response()->json(['key' => env('GOOGLE_MAPS_API_KEY')]);});
 
 Route::get('/verify-email/{id}/{token}', [UserController::class, 'verifyEmail']);
 
