@@ -69,6 +69,8 @@ class AdminDashboardController extends Controller
             $validator = Validator::make($request->all(), [
                 'futsal_name' => 'required|string|max:255',
                 'location' => 'required|string',
+                'latitude' => 'nullable|numeric|between:-90,90',
+                'longitude' => 'nullable|numeric|between:-180,180',
                 'contact_number' => 'required|string',
                 'description' => 'nullable|string',
             ]);
@@ -82,6 +84,8 @@ class AdminDashboardController extends Controller
                 ->update([
                     'futsal_name' => $request->futsal_name,
                     'location' => $request->location,
+                    'latitude' => $request->latitude,
+                    'longitude' => $request->longitude,
                     'contact_number' => $request->contact_number,
                     'description' => $request->description,
                     'updated_at' => now(),

@@ -12,6 +12,8 @@ class Futsal extends Model
     protected $fillable = [
         'futsal_name',
         'location',
+        'latitude',
+        'longitude',
         'contact_number',
         'description',
         'image',

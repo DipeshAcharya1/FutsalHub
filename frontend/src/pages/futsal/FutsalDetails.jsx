@@ -4,6 +4,7 @@ import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import api from "../../api/axios";
 import FutsalHeader from "./FutsalHeader";
+import MapComponent from "../../components/MapComponent";
 import "../../styles/FutsalDetails.css";
 
 const FutsalDetails = () => {
@@ -285,6 +286,27 @@ const FutsalDetails = () => {
       <main className="futsal-details-main">
         <FutsalHeader futsal={futsal} imageError={imageError} setImageError={setImageError} />
 
+        {/* Futsal Information Section with Map */}
+        <div className="futsal-info-card">
+          {/* Show coordinates if available */}
+          {futsal.latitude && futsal.longitude && (
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '15px', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}>
+              🗺️ Coordinates: {futsal.latitude}, {futsal.longitude}
+            </div>
+          )}
+          
+          {/* Map Section */}
+          <div className="map-section">
+            <h4>Location Map</h4>
+            <MapComponent 
+              location={futsal.location}
+              latitude={futsal.latitude}
+              longitude={futsal.longitude}
+              futsalName={futsal.futsal_name}
+            />
+          </div>
+        </div>
+
         {/* Booking Mode Selector */}
         <div className="booking-mode-selector">
           <button 
@@ -323,7 +345,6 @@ const FutsalDetails = () => {
                     const isExpired = !isValid;
                     const isBooked = !slot.is_available;
                     
-                    // Determine slot status for display
                     let slotStatus = '';
                     let statusClass = '';
                     let buttonDisabled = true;
@@ -354,7 +375,6 @@ const FutsalDetails = () => {
                         <div className="slot-time">{formatTime(slot.start_time)} - {formatTime(slot.end_time)}</div>
                         <div className="slot-price">{slot.formatted_price}</div>
                         
-                        {/* Slot Status Badge */}
                         <div className={`slot-status-badge ${isBooked ? 'status-booked' : isExpired ? 'status-expired' : 'status-available'}`}>
                           {slotStatus}
                         </div>
@@ -388,7 +408,6 @@ const FutsalDetails = () => {
                   })}
                 </div>
 
-                {/* Bulk Booking Summary */}
                 {bookingMode === 'multiple' && selectedSlots.length > 0 && (
                   <div className="bulk-summary">
                     <div className="summary-header">

@@ -438,6 +438,8 @@ const AdminDashboard = () => {
     setFutsalForm({
       futsal_name: futsalInfo.futsal_name || "",
       location: futsalInfo.location || "",
+      latitude: futsalInfo.latitude || "",
+      longitude: futsalInfo.longitude || "",
       contact_number: futsalInfo.contact_number || "",
       description: futsalInfo.description || "",
     });

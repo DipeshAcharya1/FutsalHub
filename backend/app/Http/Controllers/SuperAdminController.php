@@ -46,6 +46,8 @@ class SuperAdminController extends Controller
                     'id' => $futsal->id,
                     'futsal_name' => $futsal->futsal_name,
                     'location' => $futsal->location,
+                    'latitude' => $futsal->latitude,
+                    'longitude' => $futsal->longitude,
                     'contact_number' => $futsal->contact_number,
                     'description' => $futsal->description,
                     'image' => $futsal->image ? asset($futsal->image) : null,
@@ -249,6 +251,8 @@ class SuperAdminController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:100',
             'location' => 'required|string|max:150',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'contact_number' => 'nullable|string|max:20',
             'description' => 'nullable|string',
             'manager_id' => 'nullable|exists:users,id',
@@ -264,6 +268,8 @@ class SuperAdminController extends Controller
         $futsal = Futsal::create([
             'futsal_name' => $data['name'],
             'location' => $data['location'],
+            'latitude' => $data['latitude'] ?? null,
+            'longitude' => $data['longitude'] ?? null,
             'contact_number' => $data['contact_number'] ?? null,
             'description' => $data['description'] ?? null,
             'image' => $imageUrl,
@@ -293,6 +299,8 @@ class SuperAdminController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:100',
             'location' => 'required|string|max:150',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'contact_number' => 'nullable|string|max:20',
             'description' => 'nullable|string',
             'manager_id' => 'nullable|exists:users,id',
@@ -302,6 +310,8 @@ class SuperAdminController extends Controller
         $updateData = [
             'futsal_name' => $data['name'],
             'location' => $data['location'],
+            'latitude' => $data['latitude'] ?? $futsal->latitude,
+            'longitude' => $data['longitude'] ?? $futsal->longitude,
             'contact_number' => $data['contact_number'] ?? $futsal->contact_number,
             'description' => $data['description'] ?? $futsal->description,
             'manager_id' => $data['manager_id'] ?? null,

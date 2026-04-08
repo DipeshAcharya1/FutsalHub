@@ -55,6 +55,8 @@ const SuperAdminDashboard = () => {
   const [futsalForm, setFutsalForm] = useState({
     name: "",
     location: "",
+    latitude: "",
+    longitude: "",
     contact_number: "",
     description: "",
     manager_id: "",
@@ -210,6 +212,8 @@ const SuperAdminDashboard = () => {
     setFutsalForm({
       name: "",
       location: "",
+      latitude: "",
+      longitude: "",
       contact_number: "",
       description: "",
       manager_id: "",
@@ -223,6 +227,8 @@ const SuperAdminDashboard = () => {
     setFutsalForm({
       name: f.futsal_name || "",
       location: f.location || "",
+      latitude: f.latitude || "",
+      longitude: f.longitude ||"",
       contact_number: f.contact_number || "",
       description: f.description || "",
       manager_id: f.manager_id || "",
@@ -238,6 +244,8 @@ const SuperAdminDashboard = () => {
     const formData = new FormData();
     formData.append('name', futsalForm.name);
     formData.append('location', futsalForm.location);
+    if (futsalForm.latitude) formData.append('latitude', futsalForm.latitude);
+    if (futsalForm.longitude) formData.append('longitude', futsalForm.longitude);
     if (futsalForm.contact_number) formData.append('contact_number', futsalForm.contact_number);
     if (futsalForm.description) formData.append('description', futsalForm.description);
     if (futsalForm.manager_id) formData.append('manager_id', futsalForm.manager_id);
