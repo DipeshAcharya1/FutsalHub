@@ -32,22 +32,19 @@ const FutsalDetails = () => {
     setLoading(true);
     try {
       const response = await api.get(`/futsals/${id}`);
-      console.log('API Response:', response.data); // Debug log
+      console.log('API Response:', response.data);
       
       if (response.data.success) {
         const futsalData = response.data.data;
         setFutsal(futsalData);
         
-        // CRITICAL: Read restriction status from API response
         const restricted = futsalData.is_restricted === true;
         setIsRestricted(restricted);
         
         if (restricted) {
           setRestrictedMessage(futsalData.restricted_message || 'You have been restricted from booking at this futsal. Please contact the administrator.');
-          console.log('User is restricted:', restricted);
-          console.log('Restriction message:', futsalData.restricted_message);
           setLoading(false);
-          return; // Don't load slots if restricted
+          return;
         }
         
         if (futsalData.slots_by_date && futsalData.slots_by_date.length > 0) {
@@ -110,7 +107,7 @@ const FutsalDetails = () => {
     }
     
     if (!slot.is_available) {
-      alert("This slot is no longer available.");
+      alert("This slot is already booked.");
       return;
     }
     
@@ -134,7 +131,7 @@ const FutsalDetails = () => {
     }
     
     if (!slot.is_available) {
-      alert("This slot is no longer available.");
+      alert("This slot is already booked.");
       return;
     }
     
@@ -324,14 +321,43 @@ const FutsalDetails = () => {
                     const isSelected = selectedSlots.find(s => s.id === slot.id);
                     const isBookingThisSlot = bookingSlotId === slot.id;
                     const isExpired = !isValid;
+                    const isBooked = !slot.is_available;
+                    
+                    // Determine slot status for display
+                    let slotStatus = '';
+                    let statusClass = '';
+                    let buttonDisabled = true;
+                    let buttonText = '';
+                    
+                    if (isBooked) {
+                      slotStatus = 'Booked';
+                      statusClass = 'slot-booked';
+                      buttonText = 'Booked';
+                      buttonDisabled = true;
+                    } else if (isExpired) {
+                      slotStatus = 'Expired';
+                      statusClass = 'slot-expired';
+                      buttonText = 'Expired';
+                      buttonDisabled = true;
+                    } else {
+                      slotStatus = 'Available';
+                      statusClass = '';
+                      buttonText = isBookingThisSlot ? "Processing..." : "Book Now";
+                      buttonDisabled = false;
+                    }
                     
                     return (
                       <div 
                         key={slot.id} 
-                        className={`slot-card ${!slot.is_available ? 'slot-unavailable' : ''} ${isExpired ? 'slot-expired' : ''} ${isSelected ? 'slot-selected' : ''}`}
+                        className={`slot-card ${statusClass} ${isSelected ? 'slot-selected' : ''}`}
                       >
                         <div className="slot-time">{formatTime(slot.start_time)} - {formatTime(slot.end_time)}</div>
                         <div className="slot-price">{slot.formatted_price}</div>
+                        
+                        {/* Slot Status Badge */}
+                        <div className={`slot-status-badge ${isBooked ? 'status-booked' : isExpired ? 'status-expired' : 'status-available'}`}>
+                          {slotStatus}
+                        </div>
                         
                         {bookingMode === 'multiple' && (
                           <div className="slot-checkbox">
@@ -339,33 +365,23 @@ const FutsalDetails = () => {
                               type="checkbox" 
                               checked={isSelected || false}
                               onChange={() => toggleSlotSelection(slot)}
-                              disabled={isExpired || !slot.is_available}
+                              disabled={isBooked || isExpired}
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className={isExpired || !slot.is_available ? 'disabled' : ''}>
-                              {isExpired ? 'Expired' : (slot.is_available ? 'Select' : 'Booked')}
+                            <span className={isBooked || isExpired ? 'disabled' : ''}>
+                              {isBooked ? 'Booked' : isExpired ? 'Expired' : 'Select'}
                             </span>
                           </div>
                         )}
                         
                         {bookingMode === 'single' && (
-                          <>
-                            {!slot.is_available && (
-                              <button className="select-slot-btn disabled" disabled>Booked</button>
-                            )}
-                            {isExpired && slot.is_available && (
-                              <button className="select-slot-btn disabled" disabled>Expired</button>
-                            )}
-                            {!isExpired && slot.is_available && (
-                              <button 
-                                className="select-slot-btn" 
-                                onClick={() => handleSingleBooking(slot)} 
-                                disabled={isBookingThisSlot}
-                              >
-                                {isBookingThisSlot ? "Processing..." : "Book Now"}
-                              </button>
-                            )}
-                          </>
+                          <button 
+                            className={`select-slot-btn ${buttonDisabled ? 'disabled' : ''}`}
+                            onClick={() => handleSingleBooking(slot)} 
+                            disabled={buttonDisabled}
+                          >
+                            {buttonText}
+                          </button>
                         )}
                       </div>
                     );

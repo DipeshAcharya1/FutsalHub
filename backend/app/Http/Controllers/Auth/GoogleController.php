@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
+use Illuminate\Support\Str;
 
 class GoogleController extends Controller
 {
@@ -17,7 +18,6 @@ class GoogleController extends Controller
         try {
             Log::info('Google redirect started');
             
-            // Check if Google config exists
             if (!config('services.google.client_id')) {
                 Log::error('Google client ID not configured');
                 return redirect(env('FRONTEND_URL', 'http://localhost:5173') . '/login?error=google_not_configured');
@@ -36,7 +36,6 @@ class GoogleController extends Controller
         try {
             Log::info('Google callback started');
             
-            // Get user from Google
             $googleUser = Socialite::driver('google')->user();
             
             Log::info('Google user retrieved', [
@@ -49,12 +48,13 @@ class GoogleController extends Controller
                 throw new \Exception('No email provided by Google');
             }
             
-            // Check if user exists
+            // Check if user already exists
             $user = User::where('email', $googleUser->getEmail())->first();
+            $isNewUser = false;
             
             if (!$user) {
-                // Create new user (SIGN UP)
-                Log::info('Creating new user via Google', [
+                // SIGN UP: Create new user (one-click registration)
+                Log::info('Creating new user via Google Sign In', [
                     'email' => $googleUser->getEmail(),
                     'name' => $googleUser->getName()
                 ]);
@@ -64,14 +64,17 @@ class GoogleController extends Controller
                     'email' => $googleUser->getEmail(),
                     'google_id' => $googleUser->getId(),
                     'avatar' => $googleUser->getAvatar(),
-                    'password' => Hash::make(uniqid()),
+                    'password' => Hash::make(Str::random(32)), // Random password (user will use Google to login)
+                    'phone' => null,
                     'role' => 'user',
+                    'email_verified_at' => now(), // Google verified email
                 ]);
                 
-                Log::info('User created successfully', ['user_id' => $user->id]);
+                $isNewUser = true;
+                Log::info('New user created via Google', ['user_id' => $user->id]);
             } else {
-                // Existing user (SIGN IN)
-                Log::info('Existing user found', ['user_id' => $user->id]);
+                // SIGN IN: Existing user
+                Log::info('Existing user signing in via Google', ['user_id' => $user->id]);
                 
                 // Update Google ID if not set
                 if (!$user->google_id) {
@@ -83,10 +86,9 @@ class GoogleController extends Controller
                 }
             }
             
-            // Create token
+            // Create token and login immediately
             $token = $user->createToken('auth_token')->plainTextToken;
             
-            // Get futsal ID if admin
             $userFutsalId = null;
             if ($user->role === 'admin') {
                 $userFutsalId = DB::table('futsals')
@@ -101,13 +103,15 @@ class GoogleController extends Controller
                 'role' => $user->role,
                 'avatar' => $user->avatar,
                 'futsal_id' => $userFutsalId,
-                'is_new_user' => !$user->wasRecentlyCreated ? false : true,
+                'is_new_user' => $isNewUser,
+                'email_verified' => true,
+                'phone' => $user->phone,
             ];
             
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
-            $redirectUrl = $frontendUrl . '/google-callback?token=' . $token . '&user=' . urlencode(json_encode($userData));
+            $redirectUrl = $frontendUrl . '/google-callback?token=' . urlencode($token) . '&user=' . urlencode(json_encode($userData));
             
-            Log::info('Redirecting to frontend', ['url' => $redirectUrl]);
+            Log::info('Redirecting to frontend with login', ['url' => $redirectUrl]);
             
             return redirect($redirectUrl);
             
@@ -116,23 +120,6 @@ class GoogleController extends Controller
                 'trace' => $e->getTraceAsString()
             ]);
             return redirect(env('FRONTEND_URL', 'http://localhost:5173') . '/login?error=' . urlencode($e->getMessage()));
-        }
-    }
-    
-    public function testConfig()
-    {
-        try {
-            return response()->json([
-                'success' => true,
-                'config' => [
-                    'client_id' => config('services.google.client_id'),
-                    'redirect' => config('services.google.redirect'),
-                    'client_id_exists' => !empty(config('services.google.client_id')),
-                    'secret_exists' => !empty(config('services.google.client_secret')),
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 }

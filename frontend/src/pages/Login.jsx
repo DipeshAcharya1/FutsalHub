@@ -71,7 +71,7 @@ const Login = () => {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-left">
-          <h1 className="brand">FutsalBook</h1>
+          <h1 className="brand">FutsalHub</h1>
           <p className="brand-subtitle">
             Welcome back. Manage your futsal bookings in one place.
           </p>
