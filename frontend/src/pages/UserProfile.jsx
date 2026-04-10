@@ -14,6 +14,25 @@ const UserProfile = () => {
   const [successMsg, setSuccessMsg] = useState(null);
   const [user, setUser] = useState(null);
   
+  // Auto-hide error and success messages after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => {
+        setSuccessMsg(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMsg]);
+  
   const getActiveTabFromUrl = () => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
@@ -167,7 +186,6 @@ const UserProfile = () => {
 
   const showSuccess = (msg) => {
     setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 5000);
   };
 
   const handleAvatarClick = () => {
@@ -272,6 +290,8 @@ const UserProfile = () => {
     } catch (err) {
       if (err.response?.status === 422) {
         setFormErrors(err.response.data.errors || {});
+        const firstError = Object.values(err.response.data.errors).flat()[0];
+        if (firstError) setError(firstError);
       } else {
         setError("Failed to update profile");
       }
@@ -289,6 +309,8 @@ const UserProfile = () => {
     }
 
     setLoading(true);
+    setFormErrors({});
+    
     try {
       const response = await api.post("/user/change-password", passwordForm);
       if (response.data.success) {
@@ -297,14 +319,26 @@ const UserProfile = () => {
           new_password: "",
           new_password_confirmation: "",
         });
-        showSuccess("Password changed successfully");
+        showSuccess("Password changed successfully! A confirmation email has been sent.");
         setFormErrors({});
       }
     } catch (err) {
+      console.error('Password change error:', err.response?.data);
       if (err.response?.status === 422) {
-        setFormErrors(err.response.data.errors || {});
+        const validationErrors = err.response.data.errors || {};
+        setFormErrors(validationErrors);
+        
+        // Show first validation error as general error
+        const errorMessages = Object.values(validationErrors).flat();
+        if (errorMessages.length > 0) {
+          setError(errorMessages[0]);
+        } else {
+          setError(err.response.data.message || "Failed to change password");
+        }
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
       } else {
-        setError("Failed to change password");
+        setError("Failed to change password. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -397,13 +431,11 @@ const UserProfile = () => {
       const date = new Date(deadline);
       const now = new Date();
       
-      // Check if deadline has already passed
       if (isNaN(date.getTime())) return 'N/A';
       if (date < now) {
         return 'Expired';
       }
       
-      // Format as (2 hours before game)
       return date.toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -423,7 +455,6 @@ const UserProfile = () => {
     }
     if (booking.is_past) return 'status-completed';
     
-    // Check if cancellation deadline has passed
     const deadlinePassed = booking.cancel_deadline && new Date(booking.cancel_deadline) < new Date();
     if (deadlinePassed && booking.status === 'confirmed') {
       return 'status-no-cancel';
@@ -447,7 +478,6 @@ const UserProfile = () => {
     return 'Confirmed';
   };
 
-  // Check if cancellation is allowed
   const isCancellationAllowed = (booking) => {
     return booking.status === 'confirmed' && 
            !booking.is_past && 
@@ -593,6 +623,7 @@ const UserProfile = () => {
                       className={formErrors.new_password ? "error" : ""} 
                     />
                     {formErrors.new_password && <span className="error-text">{formErrors.new_password}</span>}
+                    <small className="form-hint">Minimum 6 characters</small>
                   </div>
 
                   <div className="form-group">

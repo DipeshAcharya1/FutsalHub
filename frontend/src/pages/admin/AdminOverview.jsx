@@ -70,14 +70,6 @@ const AdminOverview = ({
               <div className="detail-value">{futsalInfo.contact_number || "N/A"}</div>
             </div>
             <div className="detail-item">
-              <div className="detail-label">Latitude</div>
-              <div className="detail-value">{futsalInfo.latitude !== null ? futsalInfo.latitude : "N/A"}</div>
-            </div>
-            <div className="detail-item">
-              <div className="detail-label">Longitude</div>
-              <div className="detail-value">{futsalInfo.longitude !== null ? futsalInfo.longitude : "N/A"}</div>
-            </div>
-            <div className="detail-item">
               <div className="detail-label">Description</div>
               <div className="detail-value">{futsalInfo.description || "N/A"}</div>
             </div>

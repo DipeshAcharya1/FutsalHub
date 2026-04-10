@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import RatingStars from './RatingStars';
 import api from '../../api/axios';
@@ -11,16 +10,37 @@ const ReviewCard = ({ review, currentUserId, onReviewDeleted, onReviewUpdated })
   const [submitting, setSubmitting] = useState(false);
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now - date);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (!dateString) return 'N/A';
     
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) return 'N/A';
+      
+      // Reset time part for day comparison
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const reviewDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      
+      const diffTime = today - reviewDate;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      if (diffDays < 30) return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) !== 1 ? 's' : ''} ago`;
+      if (diffDays < 365) return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) !== 1 ? 's' : ''} ago`;
+      
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return 'N/A';
+    }
   };
 
   const handleDelete = async () => {
@@ -87,7 +107,7 @@ const ReviewCard = ({ review, currentUserId, onReviewDeleted, onReviewUpdated })
             <input
               type="text"
               className="form-input"
-              placeholder="Review title (optional)"
+              placeholder="Review title"
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               maxLength={100}
@@ -149,6 +169,10 @@ const ReviewCard = ({ review, currentUserId, onReviewDeleted, onReviewUpdated })
       )}
       
       <div className="review-footer">
+        {review.is_verified_purchase && (
+          <span className="verified-badge">✓ Verified Purchase</span>
+        )}
+        
         {currentUserId === review.user_id && (
           <div className="review-actions">
             <button className="edit-review" onClick={() => setIsEditing(true)}>

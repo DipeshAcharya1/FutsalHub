@@ -297,14 +297,14 @@ const FutsalDetails = () => {
             </div>
             <div className="info-details">
               <div className="info-detail-item">
-                <span className="detail-icon">📍</span>
+                <span className="detail-icon"></span>
                 <div className="detail-text">
                   <span className="detail-label">Location</span>
                   <span className="detail-value">{futsal.location}</span>
                 </div>
               </div>
               <div className="info-detail-item">
-                <span className="detail-icon">📞</span>
+                <span className="detail-icon"></span>
                 <div className="detail-text">
                   <span className="detail-label">Contact Number</span>
                   <span className="detail-value">{futsal.contact_number || 'N/A'}</span>
@@ -330,7 +330,7 @@ const FutsalDetails = () => {
               futsalName={futsal.futsal_name}
             />
             <div className="map-address-footer">
-              📍 {futsal.location}
+               {futsal.location}
             </div>
           </div>
         </div>
