@@ -14,6 +14,8 @@ class Futsal extends Model
         'location',
         'latitude',
         'longitude',
+        'average_rating',
+        'total_reviews',
         'contact_number',
         'description',
         'image',

@@ -10,6 +10,7 @@ const AdminNavbar = ({ user, futsalInfo, futsalActive, tab, setTab }) => {
     ["bookings", "Bookings"],
     ["payments", "Payments"],
     ["users", "Users"],
+    ["reviews", "Reviews"],
     ["reports", "Reports"],
   ];
 

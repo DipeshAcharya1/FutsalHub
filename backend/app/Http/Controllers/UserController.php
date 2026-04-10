@@ -452,16 +452,89 @@ private function sendVerificationEmail($user)
 			$user->password = Hash::make($request->new_password);
 			$user->save();
 
+			// Send password change confirmation email
+			try {
+				$this->sendPasswordChangeConfirmationEmail($user);
+			} catch (\Exception $e) {
+				Log::error('Failed to send password change email: ' . $e->getMessage());
+				// Don't fail the request if email fails
+			}
+
 			return response()->json([
 				'success' => true,
 				'message' => 'Password changed successfully'
 			]);
 		} catch (\Exception $e) {
+			Log::error('Change password error: ' . $e->getMessage());
 			return response()->json([
 				'success' => false,
 				'message' => 'Failed to change password'
 			], 500);
 		}
+	}
+
+	/**
+	 * Send password change confirmation email
+	 */
+	private function sendPasswordChangeConfirmationEmail($user)
+	{
+		$html = "
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>Password Changed Successfully</title>
+			<style>
+				body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+				.container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+				.header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+				.header h1 { margin: 0; font-size: 24px; }
+				.header p { margin: 10px 0 0; opacity: 0.9; }
+				.content { padding: 30px; text-align: center; }
+				.success-icon { font-size: 64px; color: #27ae60; margin-bottom: 20px; }
+				.button { display: inline-block; padding: 12px 30px; background: #4f46e5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: 600; }
+				.footer { text-align: center; padding: 20px; font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; }
+				.warning { background: #fff3cd; padding: 10px; border-radius: 5px; font-size: 12px; margin-top: 20px; }
+				.detail-box { background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; }
+			</style>
+		</head>
+		<body>
+			<div class='container'>
+				<div class='header'>
+					<h1>FutsalHub</h1>
+					<p>Password Changed Successfully</p>
+				</div>
+				<div class='content'>
+					<div class='success-icon'>✓</div>
+					<h2>Hello {$user->name},</h2>
+					<p>Your password has been changed successfully.</p>
+					<div class='detail-box'>
+						<strong>Account Details:</strong><br>
+						Email: {$user->email}<br>
+						Changed on: " . now()->format('F j, Y \a\t g:i A') . "
+					</div>
+					<p>If you made this change, you can ignore this email.</p>
+					<div class='warning'>
+						<strong>⚠️ Did not make this change?</strong><br>
+						Please contact our support team immediately to secure your account.
+					</div>
+					<p>You can now log in with your new password.</p>
+					<div style='text-align: center;'>
+						<a href='" . env('FRONTEND_URL', 'http://localhost:5173') . "/login' class='button'>Login to Your Account</a>
+					</div>
+				</div>
+				<div class='footer'>
+					<p>© 2026 FutsalHub. All rights reserved.</p>
+					<p>If you did not request this change, please contact us at support@futsalhub.com</p>
+				</div>
+			</div>
+		</body>
+		</html>
+		";
+
+		Mail::html($html, function ($message) use ($user) {
+			$message->to($user->email, $user->name)
+					->subject('Password Changed Successfully - FutsalHub');
+		});
 	}
 
 	/**

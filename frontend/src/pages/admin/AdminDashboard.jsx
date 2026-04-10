@@ -13,6 +13,7 @@ import SlotModal from "./SlotModal";
 import SettingsModal from "./SettingsModal";
 import GenerateModal from "./GenerateModal";
 import { generateReportPDF } from "../../utils/pdfGenerator";
+import AdminReviews from "./AdminReviews";
 import "../../styles/AdminDashboard.css";
 
 const AdminDashboard = () => {
@@ -25,7 +26,7 @@ const AdminDashboard = () => {
   // Get tab from URL or default to "overview"
   const getTabFromUrl = () => {
     const tabParam = searchParams.get('tab');
-    const validTabs = ['overview', 'slots', 'bookings', 'payments', 'users', 'reports'];
+    const validTabs = ['overview', 'slots', 'bookings', 'payments', 'users', 'reviews', 'reports'];
     return tabParam && validTabs.includes(tabParam) ? tabParam : 'overview';
   };
 
@@ -665,6 +666,13 @@ const AdminDashboard = () => {
               if (perPage) setUsersPerPage(perPage);
               setUsersPage(page);
             }}
+          />
+        )}
+
+        {tab === "reviews" && (
+          <AdminReviews 
+            futsalId={futsalId} 
+            isSuperAdmin={false}
           />
         )}
 

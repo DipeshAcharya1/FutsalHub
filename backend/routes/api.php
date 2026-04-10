@@ -10,6 +10,7 @@ use App\Http\Controllers\BookingController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\KhaltiController;
+use App\Http\Controllers\ReviewController;
 
 // PUBLIC ROUTES (No authentication required)
 Route::post('/register', [UserController::class, 'register']);
@@ -21,6 +22,7 @@ Route::get('/home', [HomeController::class, 'index']);
 Route::get('/popular-futsals', [HomeController::class, 'getPopularFutsals']); 
 Route::get('/futsals/popular', [HomeController::class, 'getPopularFutsals']);
 Route::get('/futsals/stats', [HomeController::class, 'getStats']);
+Route::get('/futsals/{id}/reviews', [ReviewController::class, 'getFutsalReviews']);
 
 // Google OAuth Routes
 Route::get('/auth/google/redirect', [GoogleController::class, 'redirect'])->middleware('web');
@@ -52,7 +54,10 @@ Route::middleware('auth:sanctum')->group(function () {
      Route::get('/verification-status', [UserController::class, 'checkVerificationStatus']);
     Route::post('/resend-verification', [UserController::class, 'resendVerification']);
     Route::get('/user/bookings', [BookingController::class, 'getUserBookings']);
-    
+    Route::post('/reviews', [ReviewController::class, 'submitReview']);
+    Route::put('/reviews/{id}', [ReviewController::class, 'updateReview']);
+    Route::delete('/reviews/{id}', [ReviewController::class, 'deleteReview']);
+
     // BOOKING ROUTES
     Route::post('/bookings', [BookingController::class, 'createBooking']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
@@ -62,12 +67,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/bookings/bulk/{bulkBookingId}', [BookingController::class, 'getBulkBookingDetails']);
 
 
-// =============================================
-// KHALTI PAYMENT ROUTES 
-// =============================================
-Route::post('/khalti/initiate', [KhaltiController::class, 'initiatePayment']);
-Route::post('/khalti/initiate-bulk', [KhaltiController::class, 'initiateBulkPayment']);
-Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
+    // =============================================
+    // KHALTI PAYMENT ROUTES 
+    // =============================================
+    Route::post('/khalti/initiate', [KhaltiController::class, 'initiatePayment']);
+    Route::post('/khalti/initiate-bulk', [KhaltiController::class, 'initiateBulkPayment']);
+    Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
 
 
     // ADMIN ROUTES
@@ -98,6 +103,10 @@ Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
     Route::get('/admin/futsals/{futsal}/payments', [AdminDashboardController::class, 'payments']);
     Route::get('/admin/futsals/{futsal}/reports', [AdminDashboardController::class, 'reports']);
     Route::get('/admin/futsals/{futsal}/check-restriction/{userId}', [AdminDashboardController::class, 'checkUserRestriction']);
+
+    Route::get('/admin/futsals/{futsalId}/reviews', [ReviewController::class, 'getFutsalReviewsForAdmin']);
+    Route::patch('/admin/reviews/{reviewId}/moderate', [ReviewController::class, 'moderateReview']);
+    Route::delete('/admin/reviews/{reviewId}', [ReviewController::class, 'deleteReviewByAdmin']);
 
 
     // SUPER ADMIN ROUTES
@@ -135,6 +144,10 @@ Route::post('/khalti/verify', [KhaltiController::class, 'verifyPayment']);
         Route::get('/activity-logs', [SuperAdminController::class, 'getActivityLogs']);
 
         Route::get('/reports', [SuperAdminController::class, 'getReports']);
+
+        Route::get('/reviews', [ReviewController::class, 'getAllReviewsForSuperAdmin']);
+        Route::patch('/reviews/{reviewId}/moderate', [ReviewController::class, 'moderateReview']);
+        Route::delete('/reviews/{reviewId}', [ReviewController::class, 'deleteReviewByAdmin']);
     });
 });
 

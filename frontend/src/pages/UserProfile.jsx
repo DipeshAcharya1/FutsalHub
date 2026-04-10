@@ -72,7 +72,6 @@ const UserProfile = () => {
     }
   }, [location.search]);
 
-  // Group bookings when they change
   useEffect(() => {
     groupBookingsByBulk();
   }, [bookings]);
@@ -153,7 +152,6 @@ const UserProfile = () => {
       }
     });
 
-    // Check if all bookings in bulk group can be cancelled
     Object.values(bulkGroups).forEach(group => {
       let allCancellable = true;
       group.bookings.forEach(booking => {
@@ -395,14 +393,27 @@ const UserProfile = () => {
 
   const formatDeadline = (deadline) => {
     if (!deadline) return 'N/A';
-    const date = new Date(deadline);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    try {
+      const date = new Date(deadline);
+      const now = new Date();
+      
+      // Check if deadline has already passed
+      if (isNaN(date.getTime())) return 'N/A';
+      if (date < now) {
+        return 'Expired';
+      }
+      
+      // Format as (2 hours before game)
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return 'N/A';
+    }
   };
 
   const getStatusClass = (booking) => {
@@ -411,6 +422,13 @@ const UserProfile = () => {
       return 'status-cancelled';
     }
     if (booking.is_past) return 'status-completed';
+    
+    // Check if cancellation deadline has passed
+    const deadlinePassed = booking.cancel_deadline && new Date(booking.cancel_deadline) < new Date();
+    if (deadlinePassed && booking.status === 'confirmed') {
+      return 'status-no-cancel';
+    }
+    
     return 'status-confirmed';
   };
 
@@ -420,7 +438,22 @@ const UserProfile = () => {
       return 'Cancelled';
     }
     if (booking.is_past) return 'Completed';
+    
+    const deadlinePassed = booking.cancel_deadline && new Date(booking.cancel_deadline) < new Date();
+    if (deadlinePassed && booking.status === 'confirmed') {
+      return 'No Cancel';
+    }
+    
     return 'Confirmed';
+  };
+
+  // Check if cancellation is allowed
+  const isCancellationAllowed = (booking) => {
+    return booking.status === 'confirmed' && 
+           !booking.is_past && 
+           booking.can_cancel && 
+           booking.cancel_deadline && 
+           new Date(booking.cancel_deadline) > new Date();
   };
 
   if (!user) {
@@ -580,7 +613,7 @@ const UserProfile = () => {
               </div>
             )}
 
-            {/* My Bookings Tab - TABLE VIEW WITH BULK GROUPING */}
+            {/* My Bookings Tab */}
             {activeTab === "bookings" && (
               <div className="bookings-table-container">
                 {bookingsLoading ? (
@@ -608,14 +641,13 @@ const UserProfile = () => {
                       <tbody>
                         {groupedBookings.map((item, idx) => {
                           if (item.is_bulk) {
-                            // Render Bulk Booking Row
                             return (
                               <tr key={item.id} className="booking-row bulk-row">
                                 <td className="futsal-info">
-                                  <strong> {item.futsal_name}</strong>
+                                  <strong>{item.futsal_name}</strong>
                                   <small>{item.location}</small>
                                   <span className="bulk-badge">{item.total_slots} slots • Rs. {item.total_amount}</span>
-                                 </td>
+                                </td>
                                 <td>
                                   {item.bookings.map((booking, i) => (
                                     <div key={i} className="bulk-slot">
@@ -638,7 +670,7 @@ const UserProfile = () => {
                                     <span className="status-badge-table status-confirmed">Active</span>
                                   )}
                                 </td>
-                                <td>
+                                <td className="cancel-by-cell">
                                   {item.can_cancel_all && !item.has_cancelled ? (
                                     <span className="deadline-text">Before game time</span>
                                   ) : (
@@ -660,11 +692,11 @@ const UserProfile = () => {
                               </tr>
                             );
                           } else {
-                            // Render Single Booking Row
                             const booking = item;
-                            const canCancel = booking.status === 'confirmed' && !booking.is_past && booking.can_cancel;
+                            const canCancel = isCancellationAllowed(booking);
                             const statusClass = getStatusClass(booking);
                             const statusText = getStatusText(booking);
+                            const isDeadlineExpired = booking.cancel_deadline && new Date(booking.cancel_deadline) < new Date();
                             
                             return (
                               <tr key={booking.id} className="booking-row">
@@ -682,9 +714,18 @@ const UserProfile = () => {
                                     <span className="refund-badge">Refunded</span>
                                   )}
                                 </td>
-                                <td>
+                                <td className="cancel-by-cell">
                                   {booking.status === 'confirmed' && !booking.is_past && booking.cancel_deadline ? (
-                                    <span className="deadline-text">{formatDeadline(booking.cancel_deadline)}</span>
+                                    !isDeadlineExpired ? (
+                                      <div>
+                                        <span className="deadline-text">{formatDeadline(booking.cancel_deadline)}</span>
+                                        {booking.time_remaining_to_cancel && booking.time_remaining_to_cancel !== 'Expired' && (
+                                          <span className="time-remaining">({booking.time_remaining_to_cancel})</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="deadline-expired">Expired</span>
+                                    )
                                   ) : (
                                     <span className="na-text">—</span>
                                   )}
@@ -740,7 +781,7 @@ const UserProfile = () => {
                 ⚠️ You must cancel at least 2 hours before the game time to receive a full refund.
               </p>
               <div className="refund-info">
-                Refund of Rs. {selectedBooking.price} will be processed within 5-7 business days.
+                Refund of Rs. {selectedBooking.price} will be processed.
               </div>
             </div>
             <div className="modal-footer">
@@ -780,7 +821,7 @@ const UserProfile = () => {
               <div className="refund-info">
                 <strong>Total Refund:</strong> Rs. {selectedBulkGroup.total_amount}
                 <br />
-                <small>Will be processed within 5-7 business days</small>
+                <small>Will be processed</small>
               </div>
               <p className="warning-text">
                 ⚠️ You must cancel at least 2 hours before each game time to receive full refunds.

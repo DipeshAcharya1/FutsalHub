@@ -11,6 +11,7 @@ import StatsTab from "./StatsTab";
 import FutsalDetailsModal from "./FutsalDetailsModal";
 import FutsalModal from "./FutsalModal";
 import SuperAdminReports from "./SuperAdminReports";
+import SuperAdminReviews from "./SuperAdminReviews";
 import "../../styles/SuperAdminDashboard.css";
 
 const SuperAdminDashboard = () => {
@@ -369,6 +370,9 @@ const SuperAdminDashboard = () => {
             <button className={tab === "users" ? "active" : ""} onClick={() => handleTabChange("users")}>
               Users
             </button>
+            <button className={tab === "reviews" ? "active" : ""} onClick={() => handleTabChange("reviews")}>
+              Reviews
+            </button>
             <button className={tab === "reports" ? "active" : ""} onClick={() => handleTabChange("reports")}>
               Reports
             </button>
@@ -446,6 +450,12 @@ const SuperAdminDashboard = () => {
                 if (perPage) setUsersPerPage(perPage);
                 setUsersPage(page);
               }}
+            />
+          )}
+
+          {tab === "reviews" && (
+            <SuperAdminReviews 
+              futsals={futsals}
             />
           )}
 

@@ -238,26 +238,6 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
             </div>
           </div>
 
-          {/* Auto-fetch Coordinates Button */}
-          <div style={{ marginBottom: '15px' }}>
-            <button
-              type="button"
-              onClick={geocodeAddress}
-              style={{
-                background: '#28a745',
-                color: 'white',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px',
-                marginRight: '10px'
-              }}
-            >
-              🌍 Auto-fetch Coordinates from Address
-            </button>
-          </div>
-
           {/* Get Coordinates Help */}
           <div style={{ fontSize: '12px', marginBottom: '15px' }}>
             <a 
@@ -266,7 +246,7 @@ const FutsalModal = ({ editingFutsal, futsalForm, setFutsalForm, admins, onSave,
               rel="noopener noreferrer"
               style={{ color: '#3498db' }}
             >
-              📍 Get coordinates from Google Maps
+               Get coordinates from Google Maps
             </a>
             <small style={{ display: 'block', color: '#666', marginTop: '5px' }}>
               How to get coordinates: Right-click on the location in Google Maps → Click on the coordinates

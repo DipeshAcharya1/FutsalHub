@@ -159,7 +159,7 @@ class PasswordResetController extends Controller
         </head>
         <body>
             <div class='container'>
-                <h2>Futsal Booking</h2>
+                <h2>FutsalHub</h2>
                 <p>Hello <strong>{$user->name}</strong>,</p>
                 <p>We received a request to reset your password. Click the button below:</p>
                 <p style='text-align: center;'>
@@ -168,7 +168,7 @@ class PasswordResetController extends Controller
                 <p>This link will expire in 60 minutes.</p>
                 <p>If you didn't request this, please ignore this email.</p>
                 <hr>
-                <p style='font-size: 12px;'>Futsal Booking System</p>
+                <p style='font-size: 12px;'>FutsalHub</p>
             </div>
         </body>
         </html>
@@ -176,7 +176,7 @@ class PasswordResetController extends Controller
 
         Mail::html($html, function ($message) use ($user) {
             $message->to($user->email, $user->name)
-                    ->subject('Reset Your Password - Futsal Booking');
+                    ->subject('Reset Your Password - FutsalHub');
         });
     }
 
@@ -201,7 +201,7 @@ class PasswordResetController extends Controller
                 <p>Your password has been changed successfully.</p>
                 <p>You can now log in with your new password.</p>
                 <hr>
-                <p style='font-size: 12px;'>Futsal Booking System</p>
+                <p style='font-size: 12px;'>FutsalHub</p>
             </div>
         </body>
         </html>
@@ -209,7 +209,7 @@ class PasswordResetController extends Controller
 
         Mail::html($html, function ($message) use ($user) {
             $message->to($user->email, $user->name)
-                    ->subject('Password Changed Successfully - Futsal Booking');
+                    ->subject('Password Changed Successfully - FutsalHub');
         });
     }
 }

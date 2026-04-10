@@ -266,24 +266,41 @@ class BookingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function($booking) {
-                    $slotDateTime = Carbon::parse($booking->futsalSlot->slot_date . ' ' . $booking->futsalSlot->timeSlot->start_time);
+                    // Parse slot date and start time
+                    $slotDate = $booking->futsalSlot->slot_date;
+                    $startTime = $booking->futsalSlot->timeSlot->start_time;
+                    
+                    // Create Carbon instance for slot start time
+                    $slotDateTime = Carbon::parse($slotDate . ' ' . $startTime);
                     $now = Carbon::now();
+                    
+                    // Check if slot is in the past
                     $isPast = $now > $slotDateTime;
+                    
+                    // Cancel deadline is 2 hours BEFORE the slot start time
                     $cancelDeadline = $slotDateTime->copy()->subHours(2);
                     
+                    // Check if cancellation is allowed (deadline not passed AND not past)
                     $canCancel = $booking->status === 'confirmed' 
                         && !$isPast 
                         && $now < $cancelDeadline;
                     
-                    // Calculate time remaining for cancellation
+                    // FIXED: Calculate time remaining for cancellation correctly
                     $timeRemaining = '';
-                    if ($canCancel) {
-                        $minutesRemaining = $now->diffInMinutes($cancelDeadline, false);
+                    if ($canCancel && $now < $cancelDeadline) {
+                        $minutesRemaining = $cancelDeadline->diffInMinutes($now);
                         if ($minutesRemaining > 0) {
                             $hours = floor($minutesRemaining / 60);
                             $minutes = $minutesRemaining % 60;
-                            $timeRemaining = "{$hours}h {$minutes}m";
+                            if ($hours > 0) {
+                                $timeRemaining = "{$hours}h {$minutes}m left";
+                            } else {
+                                $timeRemaining = "{$minutes}m left";
+                            }
                         }
+                    } elseif (!$canCancel && $booking->status === 'confirmed' && !$isPast && $now > $cancelDeadline) {
+                        // Deadline has passed
+                        $timeRemaining = 'Expired';
                     }
                     
                     return [
@@ -298,7 +315,7 @@ class BookingController extends Controller
                         'payment_expires_at' => $booking->payment_expires_at,
                         'is_expired' => $booking->status === 'pending' && $now > $booking->payment_expires_at,
                         'can_cancel' => $canCancel,
-                        'cancel_deadline' => $cancelDeadline,
+                        'cancel_deadline' => $cancelDeadline->toDateTimeString(),
                         'time_remaining_to_cancel' => $timeRemaining,
                         'slot_start_time' => $slotDateTime,
                         'futsal_name' => $booking->futsalSlot->futsal->futsal_name ?? 'N/A',
@@ -309,7 +326,6 @@ class BookingController extends Controller
                         'price' => $booking->futsalSlot->price,
                         'is_past' => $isPast,
                         'created_at' => $booking->created_at,
-                        // IMPORTANT: Add bulk booking fields
                         'bulk_booking_id' => $booking->bulk_booking_id,
                         'is_bulk_booking' => (bool)$booking->is_bulk_booking,
                         'total_slots' => $booking->total_slots ?? 1,

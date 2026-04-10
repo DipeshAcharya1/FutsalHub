@@ -8,7 +8,7 @@ import "../styles/Futsals.css";
 const Futsals = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [futsals, setFutsals] = useState([]);
+  const [allFutsals, setAllFutsals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -29,33 +29,39 @@ const Futsals = () => {
       setDebouncedSearch(search);
       setCurrentPage(1);
     }, 500);
-
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Fetch futsals when debouncedSearch, filters, or currentPage change
+  // Fetch futsals when debouncedSearch changes
   useEffect(() => {
     fetchFutsals();
-  }, [debouncedSearch, filters, currentPage]);
+  }, [debouncedSearch]);
+
+  // Apply sorting and pagination when filters or allFutsals change
+  useEffect(() => {
+    if (allFutsals.length > 0) {
+      applySortingAndPagination();
+    }
+  }, [filters.sort, allFutsals, currentPage]);
 
   const fetchFutsals = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         search: debouncedSearch,
-        sort: filters.sort,
-        page: currentPage,
-        per_page: pagination.perPage,
+        page: 1,
+        per_page: 100, // Fetch all to sort on frontend
       });
 
       const response = await api.get(`/futsals?${params}`);
       if (response.data.success) {
-        setFutsals(response.data.data.data);
+        let fetchedFutsals = response.data.data.data;
+        setAllFutsals(fetchedFutsals);
         setPagination({
-          current: response.data.data.current_page,
-          total: response.data.data.last_page,
-          perPage: response.data.data.per_page,
-          totalItems: response.data.data.total,
+          current: 1,
+          total: Math.ceil(fetchedFutsals.length / pagination.perPage),
+          perPage: pagination.perPage,
+          totalItems: fetchedFutsals.length,
         });
         setImageErrors({});
       }
@@ -66,6 +72,47 @@ const Futsals = () => {
     }
   };
 
+  // Helper function to extract numeric price
+  const extractNumericPrice = (priceFrom) => {
+    if (!priceFrom) return Infinity;
+    const match = String(priceFrom).match(/\d+/g);
+    if (match) {
+      return parseInt(match.join(''));
+    }
+    return Infinity;
+  };
+
+  // Sort futsals by selected criteria
+  const sortFutsals = (futsalsList, sortType) => {
+    const sorted = [...futsalsList];
+    switch(sortType) {
+      case 'name':
+        return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      case 'popular':
+        return sorted.sort((a, b) => (b.available_slots || 0) - (a.available_slots || 0));
+      case 'price_low':
+        return sorted.sort((a, b) => extractNumericPrice(a.price_from) - extractNumericPrice(b.price_from));
+      case 'price_high':
+        return sorted.sort((a, b) => extractNumericPrice(b.price_from) - extractNumericPrice(a.price_from));
+      default:
+        return sorted;
+    }
+  };
+
+  const applySortingAndPagination = () => {
+    // Apply sorting
+    const sorted = sortFutsals(allFutsals, filters.sort);
+    
+    // Apply pagination
+    const startIndex = (currentPage - 1) * pagination.perPage;
+    const endIndex = startIndex + pagination.perPage;
+    const paginated = sorted.slice(startIndex, endIndex);
+    
+    setFutsals(paginated);
+  };
+
+  const [futsals, setFutsals] = useState([]);
+
   const handleViewDetails = (futsalId) => {
     navigate(`/futsal/${futsalId}`);
   };
@@ -75,7 +122,8 @@ const Futsals = () => {
   };
 
   const handleSortChange = (e) => {
-    setFilters(prev => ({ ...prev, sort: e.target.value }));
+    const newSort = e.target.value;
+    setFilters(prev => ({ ...prev, sort: newSort }));
     setCurrentPage(1);
   };
 
@@ -92,6 +140,7 @@ const Futsals = () => {
     setFilters({ sort: "name" });
     setCurrentPage(1);
     setImageErrors({});
+    fetchFutsals();
   };
 
   const clearSearch = () => {
@@ -130,7 +179,6 @@ const Futsals = () => {
         pageNumbers.push(pagination.total);
       }
     }
-    
     return pageNumbers;
   };
 
@@ -232,15 +280,15 @@ const Futsals = () => {
                     <div className="futsal-content">
                       <h3 className="futsal-name">{futsal.name}</h3>
                       <p className="futsal-location">
-                         {futsal.location}
+                        {futsal.location}
                       </p>
                       <p className="futsal-description">{futsal.description}</p>
                       <div className="futsal-meta">
                         <span className="futsal-slots">
-                           {futsal.available_slots}  slots 
+                          {futsal.available_slots} slots 
                         </span>
                         <span className="futsal-price">
-                           {futsal.price_from}
+                          {futsal.price_from}
                         </span>
                       </div>
                     </div>
