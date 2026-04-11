@@ -61,11 +61,7 @@ const FutsalDetails = () => {
           const firstDate = dates[0];
           setSelectedDate(firstDate);
           
-          // Log slots to debug
           const firstDateSlots = futsalData.slots_by_date.find(item => item.date === firstDate)?.slots || [];
-          console.log('Slots for first date:', firstDateSlots);
-          console.log('Slot availability check:', firstDateSlots.map(s => ({ id: s.id, is_available: s.is_available, start_time: s.start_time })));
-          
           setAvailableSlots(firstDateSlots);
         }
       }
@@ -81,38 +77,38 @@ const FutsalDetails = () => {
     setSelectedDate(date);
     const dateGroup = slotsByDate.find(item => item.date === date);
     const slots = dateGroup?.slots || [];
-    console.log(`Slots for date ${date}:`, slots);
     setAvailableSlots(slots);
     setSelectedSlots([]);
   };
 
-  const isSlotValid = (slot, date) => {
-    if (!date) return false;
-    const today = new Date().toISOString().split('T')[0];
-    const currentTime = new Date();
-    const currentHours = currentTime.getHours();
-    const currentMinutes = currentTime.getMinutes();
-    const currentTimeInMinutes = currentHours * 60 + currentMinutes;
+  // FIXED: Check if a slot has expired (time has passed)
+  const isSlotExpired = (slot, date) => {
+    if (!date || !slot.start_time) return false;
     
+    // Get current date and time
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // Create slot date-time object
     const [hours, minutes] = slot.start_time.split(':');
-    const slotTimeInMinutes = parseInt(hours) * 60 + parseInt(minutes);
+    const slotDateTime = new Date(date);
+    slotDateTime.setHours(parseInt(hours), parseInt(minutes), 0);
     
-    if (date > today) return true;
-    if (date === today) return slotTimeInMinutes > currentTimeInMinutes;
+    // If date is in the past, it's expired
+    if (date < today) return true;
+    
+    // If date is today, check if time has passed
+    if (date === today) {
+      return slotDateTime < now;
+    }
+    
+    // Future dates are not expired
     return false;
   };
 
-  // Check if slot is booked (handle different possible values)
+  // Check if slot is booked (from database)
   const isSlotBooked = (slot) => {
-    // Check is_available - could be boolean, 0/1, "0"/"1", true/false
-    if (slot.is_available === false || slot.is_available === 0 || slot.is_available === "0") {
-      return true;
-    }
-    // Also check if there's a booking status
-    if (slot.booking_status === 'confirmed') {
-      return true;
-    }
-    return false;
+    return slot.is_available === false || slot.is_available === 0 || slot.is_available === "0";
   };
 
   const toggleSlotSelection = (slot) => {
@@ -121,9 +117,8 @@ const FutsalDetails = () => {
       return;
     }
     
-    const isValid = isSlotValid(slot, selectedDate);
-    if (!isValid) {
-      alert("This slot has already passed.");
+    if (isSlotExpired(slot, selectedDate)) {
+      alert("This slot has already expired.");
       return;
     }
     
@@ -145,8 +140,8 @@ const FutsalDetails = () => {
       alert(restrictedMessage);
       return;
     }
-    if (!isSlotValid(slot, selectedDate)) {
-      alert("This slot has already passed.");
+    if (isSlotExpired(slot, selectedDate)) {
+      alert("This slot has already expired.");
       return;
     }
     if (isSlotBooked(slot)) {
@@ -297,14 +292,12 @@ const FutsalDetails = () => {
             </div>
             <div className="info-details">
               <div className="info-detail-item">
-                <span className="detail-icon"></span>
                 <div className="detail-text">
                   <span className="detail-label">Location</span>
                   <span className="detail-value">{futsal.location}</span>
                 </div>
               </div>
               <div className="info-detail-item">
-                <span className="detail-icon"></span>
                 <div className="detail-text">
                   <span className="detail-label">Contact Number</span>
                   <span className="detail-value">{futsal.contact_number || 'N/A'}</span>
@@ -384,27 +377,26 @@ const FutsalDetails = () => {
                 <>
                   <div className="slots-grid-modern">
                     {availableSlots.map(slot => {
-                      const isValid = isSlotValid(slot, selectedDate);
-                      const isSelected = selectedSlots.find(s => s.id === slot.id);
-                      const isExpired = !isValid;
+                      const isExpired = isSlotExpired(slot, selectedDate);
                       const isBooked = isSlotBooked(slot);
+                      const isSelected = selectedSlots.find(s => s.id === slot.id);
                       
                       let slotStatus = '', statusClass = '', buttonDisabled = true, buttonText = '';
                       
-                      if (isBooked) {
-                        slotStatus = 'Booked'; 
-                        statusClass = 'booked'; 
-                        buttonText = 'Booked'; 
+                      if (isExpired) {
+                        slotStatus = 'Expired';
+                        statusClass = 'expired';
+                        buttonText = 'Expired';
                         buttonDisabled = true;
-                      } else if (isExpired) {
-                        slotStatus = 'Expired'; 
-                        statusClass = 'expired'; 
-                        buttonText = 'Expired'; 
+                      } else if (isBooked) {
+                        slotStatus = 'Booked';
+                        statusClass = 'booked';
+                        buttonText = 'Booked';
                         buttonDisabled = true;
                       } else {
-                        slotStatus = 'Available'; 
-                        statusClass = 'available'; 
-                        buttonText = bookingSlotId === slot.id ? "Processing..." : "Book Now"; 
+                        slotStatus = 'Available';
+                        statusClass = 'available';
+                        buttonText = bookingSlotId === slot.id ? "Processing..." : "Book Now";
                         buttonDisabled = false;
                       }
                       
@@ -414,7 +406,7 @@ const FutsalDetails = () => {
                           <div className="slot-price-modern">Rs. {slot.price.toLocaleString()}</div>
                           <div className={`slot-status-modern ${statusClass}`}>{slotStatus}</div>
                           
-                          {bookingMode === 'multiple' && !isBooked && !isExpired && (
+                          {bookingMode === 'multiple' && !isExpired && !isBooked && (
                             <label className="slot-select-modern">
                               <input type="checkbox" checked={isSelected || false} onChange={() => toggleSlotSelection(slot)} />
                               <span>Select</span>
