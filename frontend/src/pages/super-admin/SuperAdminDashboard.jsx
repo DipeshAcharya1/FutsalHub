@@ -11,7 +11,9 @@ import StatsTab from "./StatsTab";
 import FutsalDetailsModal from "./FutsalDetailsModal";
 import FutsalModal from "./FutsalModal";
 import SuperAdminReports from "./SuperAdminReports";
+import SuperAdminPayments from "./SuperAdminPayments";
 import SuperAdminReviews from "./SuperAdminReviews";
+
 import "../../styles/SuperAdminDashboard.css";
 
 const SuperAdminDashboard = () => {
@@ -20,7 +22,7 @@ const SuperAdminDashboard = () => {
   
   const getTabFromUrl = () => {
     const tabParam = searchParams.get('tab');
-    const validTabs = ['stats', 'futsals', 'admins', 'bookings', 'users', 'reports'];
+    const validTabs = ['stats', 'futsals', 'admins', 'bookings', 'users', 'payments', 'reviews', 'reports'];
     return tabParam && validTabs.includes(tabParam) ? tabParam : 'stats';
   };
 
@@ -370,6 +372,9 @@ const SuperAdminDashboard = () => {
             <button className={tab === "users" ? "active" : ""} onClick={() => handleTabChange("users")}>
               Users
             </button>
+            <button className={tab === "payments" ? "active" : ""} onClick={() => handleTabChange("payments")}>
+              Payments
+            </button>
             <button className={tab === "reviews" ? "active" : ""} onClick={() => handleTabChange("reviews")}>
               Reviews
             </button>
@@ -450,6 +455,14 @@ const SuperAdminDashboard = () => {
                 if (perPage) setUsersPerPage(perPage);
                 setUsersPage(page);
               }}
+            />
+          )}
+
+          {tab === "payments" && (
+            <SuperAdminPayments 
+              futsals={futsals}
+              selectedFutsalId={selectedFutsalId}
+              onFilterChange={handleFutsalFilter}
             />
           )}
 

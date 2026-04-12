@@ -84,29 +84,30 @@ const Register = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const v = validate();
-    setErrors(v);
-    if (Object.keys(v).length > 0) return;
+  const v = validate();
+  setErrors(v);
+  if (Object.keys(v).length > 0) return;
 
-    setLoading(true);
-    try {
-      let requestData = { ...form };
-      
-      // If coming from Google, include google_id
-      if (googleData) {
-        requestData.google_id = googleData.google_id;
-        requestData.avatar = googleData.avatar;
-      }
-      
-      const response = await api.post("/register", requestData);
-      
-      // Store token
+  setLoading(true);
+  try {
+    let requestData = { ...form };
+    
+    // If coming from Google, include google_id
+    if (googleData) {
+      requestData.google_id = googleData.google_id;
+      requestData.avatar = googleData.avatar;
+    }
+    
+    const response = await api.post("/register", requestData);
+    
+    // Check if this is a Google registration (auto-login)
+    if (response.data.access_token) {
+      // Google user - auto login
       localStorage.setItem("access_token", response.data.access_token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
       
-      // Redirect based on role
       const user = response.data.user;
       if (user.role === "super-admin") {
         navigate("/super-admin");
@@ -115,18 +116,24 @@ const Register = () => {
       } else {
         navigate("/");
       }
-    } catch (err) {
-      if (err.response?.status === 422) {
-        setErrors(err.response.data.errors);
-      } else if (err.response?.status === 409) {
-        setErrors({ email: "Email already exists. Please use a different email." });
-      } else {
-        setErrors({ general: "Registration failed. Please try again." });
-      }
-    } finally {
-      setLoading(false);
+    } else {
+      // Regular user - needs email verification
+      // Show success message and redirect to login
+      alert(response.data.message || "Registration successful! Please check your email to verify your account.");
+      navigate("/login");
     }
-  };
+  } catch (err) {
+    if (err.response?.status === 422) {
+      setErrors(err.response.data.errors);
+    } else if (err.response?.status === 409) {
+      setErrors({ email: "Email already exists. Please use a different email." });
+    } else {
+      setErrors({ general: "Registration failed. Please try again." });
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="auth-page">

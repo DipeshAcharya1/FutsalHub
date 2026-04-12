@@ -529,7 +529,7 @@ const SuperAdminReports = () => {
           {reportData.futsal_breakdown && reportData.futsal_breakdown.length > 0 && (
             <div className="card">
               <div className="card-head">
-                <h3>🏟️ Futsal Wise Breakdown</h3>
+                <h3> Futsal Wise Breakdown</h3>
               </div>
               <div className="table-responsive">
                 <table className="data-table">
@@ -568,7 +568,7 @@ const SuperAdminReports = () => {
           {reportData.bookings && reportData.bookings.length > 0 && (
             <div className="card">
               <div className="card-head">
-                <h3>📅 Booking Details</h3>
+                <h3> Booking Details</h3>
                 <span className="badge">{reportData.bookings.length} bookings</span>
               </div>
               <div className="table-responsive">

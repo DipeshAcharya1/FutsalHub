@@ -18,74 +18,85 @@ use Carbon\Carbon;
 class UserController extends Controller
 {
 	/**
-     * Register a new user and send verification email
-     */
-    public function register(Request $request): JsonResponse
-{
-    try {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'phone' => 'required|string|min:10',
-            'password' => 'required|string|min:8|confirmed',
-            'google_id' => 'nullable|string',
-            'avatar' => 'nullable|string',
-        ]);
+	 * Register a new user and send verification email
+	 */
+	public function register(Request $request): JsonResponse
+	{
+		try {
+			$validator = Validator::make($request->all(), [
+				'name' => 'required|string|max:255',
+				'email' => 'required|email|unique:users,email',
+				'phone' => 'required|string|min:10',
+				'password' => 'required|string|min:8|confirmed',
+				'google_id' => 'nullable|string',
+				'avatar' => 'nullable|string',
+			]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
+			if ($validator->fails()) {
+				return response()->json([
+					'message' => 'Validation failed',
+					'errors' => $validator->errors()
+				], 422);
+			}
 
-        $userData = [
-            'name' => $request->name,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password' => Hash::make($request->password),
-            'email_verified_at' => $request->google_id ? now() : null, // Auto-verify if Google signup
-        ];
-        
-        // Add Google data if present
-        if ($request->google_id) {
-            $userData['google_id'] = $request->google_id;
-            $userData['avatar'] = $request->avatar;
-        }
+			$userData = [
+				'name' => $request->name,
+				'email' => $request->email,
+				'phone' => $request->phone,
+				'password' => Hash::make($request->password),
+				'email_verified_at' => $request->google_id ? now() : null, // Auto-verify if Google signup
+			];
+			
+			// Add Google data if present
+			if ($request->google_id) {
+				$userData['google_id'] = $request->google_id;
+				$userData['avatar'] = $request->avatar;
+			}
 
-        $user = User::create($userData);
+			$user = User::create($userData);
 
-        // Send verification email only for non-Google users
-        if (!$request->google_id) {
-            try {
-                $this->sendVerificationEmail($user);
-            } catch (\Exception $e) {
-                Log::error('Failed to send verification email: ' . $e->getMessage());
-            }
-        }
+			// Send verification email only for non-Google users
+			if (!$request->google_id) {
+				try {
+					$this->sendVerificationEmail($user);
+				} catch (\Exception $e) {
+					Log::error('Failed to send verification email: ' . $e->getMessage());
+				}
+			}
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+			// FIXED: For non-Google users, DO NOT auto-login
+			if ($request->google_id) {
+				// Google users are auto-verified, so they can login immediately
+				$token = $user->createToken('auth_token')->plainTextToken;
+				return response()->json([
+					'access_token' => $token,
+					'token_type' => 'Bearer',
+					'user' => [
+						'id' => $user->id,
+						'name' => $user->name,
+						'email' => $user->email,
+						'role' => $user->role,
+						'email_verified' => true,
+					],
+					'message' => 'Registration successful!'
+				], 201);
+			}
 
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-                'email_verified' => $request->google_id ? true : false,
-            ],
-            'message' => 'Registration successful!'
-        ], 201);
-        
-    } catch (\Exception $e) {
-        Log::error('Registration error: ' . $e->getMessage());
-        return response()->json([
-            'message' => 'Registration failed: ' . $e->getMessage()
-        ], 500);
-    }
-}
+			// For regular users, return success without token
+			return response()->json([
+				'success' => true,
+				'message' => 'Registration successful! Please check your email to verify your account before logging in.',
+				'requires_verification' => true,
+				'email' => $user->email
+			], 201);
+			
+		} catch (\Exception $e) {
+			Log::error('Registration error: ' . $e->getMessage());
+			return response()->json([
+				'message' => 'Registration failed: ' . $e->getMessage()
+			], 500);
+		}
+	}
 
     /**
  * Send verification email to user

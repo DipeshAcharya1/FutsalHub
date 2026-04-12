@@ -202,6 +202,33 @@ public function index(Request $request): JsonResponse
                 ], 404);
             }
 
+            // FIXED: Check if futsal is active/deactivated
+            if (!$futsal->active) {
+                $imageUrl = $futsal->image;
+                if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
+                    $imageUrl = asset($imageUrl);
+                }
+                
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'id' => $futsal->id,
+                        'futsal_name' => $futsal->futsal_name,
+                        'name' => $futsal->futsal_name,
+                        'location' => $futsal->location,
+                        'latitude' => $futsal->latitude,
+                        'longitude' => $futsal->longitude,
+                        'description' => $futsal->description,
+                        'contact_number' => $futsal->contact_number,
+                        'contact' => $futsal->contact_number,
+                        'image' => $imageUrl,
+                        'is_deactivated' => true,
+                        'deactivated_message' => 'This futsal is currently deactivated. Please contact the administrator for more information.',
+                        'slots_by_date' => []
+                    ]
+                ]);
+            }
+
             // Check if user is restricted
             $isRestricted = false;
             $restrictedMessage = null;
@@ -262,7 +289,6 @@ public function index(Request $request): JsonResponse
             $currentTime = now()->format('H:i:s');
             
             // FIXED: Get ALL slots (both available and booked) for future dates
-            // Only filter by date, NOT by is_available
             $allSlots = FutsalSlot::with('timeSlot')
                 ->where('futsal_id', $id)
                 ->where('slot_date', '>=', $today)
@@ -273,19 +299,20 @@ public function index(Request $request): JsonResponse
                 return $slot->timeSlot->start_time ?? '00:00:00';
             })->values();
 
-            $mappedSlots = $sortedSlots->map(function($slot) {
-                // Determine if slot is expired
+            $mappedSlots = $sortedSlots->map(function($slot) use ($today, $currentTime) {
                 $slotDate = $slot->slot_date;
-                $today = now()->toDateString();
-                $currentTime = now()->format('H:i:s');
                 $isExpired = false;
+                $isAvailable = (bool) $slot->is_available;
                 
+                // Check if slot is expired (time has passed)
                 if ($slotDate < $today) {
                     $isExpired = true;
+                    $isAvailable = false;
                 } elseif ($slotDate == $today) {
                     $slotStartTime = $slot->timeSlot->start_time ?? '00:00:00';
                     if ($slotStartTime <= $currentTime) {
                         $isExpired = true;
+                        $isAvailable = false;
                     }
                 }
                 
@@ -299,7 +326,7 @@ public function index(Request $request): JsonResponse
                     'formatted_time' => ($slot->timeSlot->start_time ?? '') . ' - ' . ($slot->timeSlot->end_time ?? ''),
                     'price' => (float) $slot->price,
                     'formatted_price' => 'Rs. ' . number_format($slot->price),
-                    'is_available' => (bool) $slot->is_available,
+                    'is_available' => $isAvailable,
                     'is_expired' => $isExpired,
                 ];
             });
@@ -332,7 +359,8 @@ public function index(Request $request): JsonResponse
                 'total_slots' => $allSlots->count(),
                 'slots_by_date' => $slotsByDate,
                 'is_restricted' => false,
-                'restricted_message' => null
+                'restricted_message' => null,
+                'is_deactivated' => false
             ];
 
             Log::info('Response data', ['is_restricted' => false, 'user_id' => $user ? $user->id : 'guest']);
