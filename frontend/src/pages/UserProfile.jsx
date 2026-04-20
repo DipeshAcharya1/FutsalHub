@@ -623,7 +623,6 @@ const UserProfile = () => {
                       className={formErrors.new_password ? "error" : ""} 
                     />
                     {formErrors.new_password && <span className="error-text">{formErrors.new_password}</span>}
-                    <small className="form-hint">Minimum 6 characters</small>
                   </div>
 
                   <div className="form-group">

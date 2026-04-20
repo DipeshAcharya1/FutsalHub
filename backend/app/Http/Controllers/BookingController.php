@@ -425,7 +425,7 @@ class BookingController extends Controller
 
                     return response()->json([
                         'success' => true,
-                        'message' => "Booking cancelled successfully. Refund of Rs. {$booking->refund_amount} will be processed to your original payment method within 5-7 business days.",
+                        'message' => "Booking cancelled successfully. Refund of Rs. {$booking->refund_amount} will be processed.",
                         'data' => [
                             'booking_id' => $booking->id,
                             'refund_amount' => $booking->refund_amount,

@@ -17,77 +17,82 @@ class KhaltiController extends Controller
      * Initialize payment for single slot
      */
     public function initiatePayment(Request $request): JsonResponse
-    {
-        try {
-            Log::info('=== SINGLE PAYMENT INITIATION ===');
-            
-            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-                'slot_id' => 'required|exists:futsal_slots,id',
-                'amount' => 'required|numeric|min:1',
-                'futsal_id' => 'required|exists:futsals,id',
-                'booking_date' => 'required|date',
-            ]);
+{
+    try {
+        Log::info('=== SINGLE PAYMENT INITIATION ===');
+        Log::info('Step 1: Request received', $request->all());
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'slot_id' => 'required|exists:futsal_slots,id',
+            'amount' => 'required|numeric|min:1',
+            'futsal_id' => 'required|exists:futsals,id',
+            'booking_date' => 'required|date',
+        ]);
 
-            $user = $request->user();
-            
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User not authenticated'
-                ], 401);
-            }
-            
-            $slot = DB::table('futsal_slots')->where('id', $request->slot_id)->first();
-            
-            if (!$slot || !$slot->is_available) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Slot is no longer available'
-                ], 400);
-            }
+        Log::info('Step 2: Validation done');
 
-            // Generate unique transaction ID
-            $transactionId = 'TXN_' . uniqid() . '_' . time();
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
 
-            // Store payment intent
-            DB::table('payment_intents')->insert([
-                'transaction_id' => $transactionId,
-                'user_id' => $user->id,
-                'slot_id' => $request->slot_id,
-                'futsal_id' => $request->futsal_id,
-                'amount' => $request->amount,
-                'booking_date' => $request->booking_date,
-                'expires_at' => Carbon::now()->addMinutes(30),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $user = $request->user();
+        Log::info('Step 3: User', ['id' => $user?->id]);
 
-            $returnUrl = env('KHALTI_RETURN_URL', 'http://localhost:5173/payment/verify') . '?transaction_id=' . $transactionId;
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'User not authenticated'], 401);
+        }
 
-            $payload = [
-                'return_url' => $returnUrl,
-                'website_url' => env('KHALTI_WEBSITE_URL', 'http://localhost:5173'),
-                'amount' => (int)($request->amount * 100),
-                'purchase_order_id' => $transactionId,
-                'purchase_order_name' => 'Futsal Booking',
-                'customer_info' => [
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'phone' => $user->phone ?? 'N/A',
-                ],
-            ];
+        $slot = DB::table('futsal_slots')->where('id', $request->slot_id)->first();
+        Log::info('Step 4: Slot', ['slot' => $slot]);
 
-            $response = Http::withHeaders([
-                'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
-                'Content-Type' => 'application/json',
-            ])->post(env('KHALTI_BASE_URL') . '/epayment/initiate/', $payload);
+        if (!$slot || !$slot->is_available) {
+            return response()->json(['success' => false, 'message' => 'Slot is no longer available'], 400);
+        }
+
+        $transactionId = 'TXN_' . uniqid() . '_' . time();
+        Log::info('Step 5: Transaction ID', ['txn' => $transactionId]);
+
+        DB::table('payment_intents')->insert([
+            'transaction_id' => $transactionId,
+            'user_id' => $user->id,
+            'slot_id' => $request->slot_id,
+            'futsal_id' => $request->futsal_id,
+            'amount' => $request->amount,
+            'booking_date' => $request->booking_date,
+            'expires_at' => Carbon::now()->addMinutes(30),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Log::info('Step 6: Intent inserted');
+
+        $returnUrl = env('KHALTI_RETURN_URL') . '?transaction_id=' . $transactionId;
+        $khaltiUrl = env('KHALTI_BASE_URL') . '/epayment/initiate/';
+
+        Log::info('Step 7: Calling Khalti', ['url' => $khaltiUrl, 'return_url' => $returnUrl]);
+
+        $payload = [
+            'return_url' => $returnUrl,
+            'website_url' => env('KHALTI_WEBSITE_URL'),
+            'amount' => (int)($request->amount * 100),
+            'purchase_order_id' => $transactionId,
+            'purchase_order_name' => 'Futsal Booking',
+            'customer_info' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone ?? 'N/A',
+            ],
+        ];
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Key ' . env('KHALTI_SECRET_KEY'),
+            'Content-Type' => 'application/json',
+        ])->post($khaltiUrl, $payload);
+
+        Log::info('Step 8: Khalti response', [
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
 
             if ($response->successful()) {
                 $data = $response->json();

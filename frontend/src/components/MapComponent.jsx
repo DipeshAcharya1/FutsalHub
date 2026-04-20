@@ -146,7 +146,7 @@ const MapComponent = ({ location, latitude, longitude, futsalName }) => {
       />
       {location && !latitude && !longitude && (
         <div style={{ fontSize: '12px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
-          📍 {location} (approximate location)
+           {location} (approximate location)
         </div>
       )}
     </div>
